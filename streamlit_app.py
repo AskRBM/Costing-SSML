@@ -33,50 +33,61 @@ PERMISSIONS = [
 DEFAULT_SUPABASE_URL = "https://mmzvwlitakluttlnnioh.supabase.co"
 
 # -----------------------------
-# CSS - compact professional layout
+# CSS - desktop-like professional compact layout
 # -----------------------------
 st.markdown(
     """
 <style>
 [data-testid="stAppViewContainer"] {background:#eaf6fb;}
-.block-container {padding-top:0.05rem; padding-left:0.45rem; padding-right:0.45rem; max-width:100%;}
+.block-container {padding:0.15rem 0.35rem 0.25rem 0.35rem; max-width:100%;}
 [data-testid="stHeader"] {height:0rem; background:transparent;}
-[data-testid="stToolbar"] {display:none;}
-#MainMenu, footer {visibility:hidden;}
-div[data-testid="stVerticalBlock"] {gap:0.35rem;}
-.rbm-top {background:#0b4f73; color:white; padding:5px 10px; border-radius:7px 7px 0 0; display:flex; gap:12px; align-items:center; flex-wrap:wrap;}
-.rbm-logo {font-size:28px; font-weight:900; line-height:24px;}
-.rbm-sub {font-size:10px; font-weight:700;}
-.rbm-title {background:#138b75; color:white; padding:7px 18px; font-size:22px; font-weight:900; min-width:250px; text-align:center;}
-.rbm-user {margin-left:auto; font-size:13px; font-weight:700; text-align:right;}
-.nav-wrap {background:#0b4f73; padding:0 8px 6px 8px; border-radius:0 0 7px 7px; margin-bottom:5px;}
-.section-head {background:#138b75; color:white; font-size:23px; font-weight:900; padding:6px 10px; margin:0 0 6px 0;}
-.report {background:white; border:1px solid #d3d3d3; padding:8px; border-radius:8px; box-shadow:0 2px 9px rgba(0,0,0,.12);}
-.report-head {background:#0b4f73; color:white; padding:9px 14px; font-size:23px; font-weight:900; display:flex; justify-content:space-between; align-items:center;}
-.metric-row {display:grid; grid-template-columns:repeat(5,1fr); gap:6px; margin:7px 0;}
-.metric {color:white; padding:7px 10px; border-radius:3px; min-height:43px;}
-.metric small{font-weight:800; display:block; font-size:11px;}
-.metric b{font-size:19px; display:block;}
+[data-testid="stToolbar"], #MainMenu, footer {display:none !important; visibility:hidden;}
+div[data-testid="stVerticalBlock"] {gap:0.18rem;}
+hr {margin:0.15rem 0;}
+/* Top desktop-style header */
+.rbm-topbar{background:#0b4f73;color:#fff;display:grid;grid-template-columns:155px 260px 1fr 270px;align-items:center;gap:8px;padding:5px 12px;border-radius:5px 5px 0 0;min-height:54px;}
+.rbm-logo{font-size:28px;font-weight:900;line-height:25px;letter-spacing:.5px;}
+.rbm-sub{font-size:9px;font-weight:700;line-height:11px;}
+.rbm-title{background:#128b77;color:#fff;padding:8px 18px;font-size:21px;font-weight:900;text-align:center;border-bottom:4px solid #c8f5e8;white-space:nowrap;}
+.rbm-nav{display:flex;gap:6px;justify-content:center;align-items:center;flex-wrap:nowrap;}
+.rbm-nav a{background:#fff;color:#09294a;text-decoration:none;border:1px solid #b8c5d8;border-radius:4px;padding:8px 15px;font-size:14px;font-weight:700;box-shadow:0 1px 2px rgba(0,0,0,.16);white-space:nowrap;}
+.rbm-nav a.active{background:#0d6edb;color:#fff;border-color:#0d6edb;}
+.rbm-actions{display:flex;gap:8px;align-items:center;justify-content:flex-end;font-size:12px;font-weight:800;}
+.rbm-actions .sync,.rbm-actions .on,.rbm-actions .logout{padding:8px 12px;border-radius:4px;color:#fff;text-decoration:none;font-weight:900;}
+.sync{background:#0aa74d}.on{background:#07892d}.logout{background:#cc1717}.userbox{min-width:120px;text-align:right;}
+.section-head{background:#128b77;color:white;font-size:20px;font-weight:900;padding:5px 10px;margin:0;border-radius:0;}
+.control-strip{background:#e3ded8;border:1px solid #d2d2d2;padding:6px 8px;display:flex;align-items:center;gap:12px;flex-wrap:nowrap;}
+.fast-mode{margin-left:auto;color:#006b16;font-weight:900;font-size:13px;}
+.report{background:#f6fbff;border:1px solid #b9cfdf;padding:6px;border-radius:4px;box-shadow:none;}
+.report-head{background:#0b4f73;color:white;padding:8px 12px;font-size:21px;font-weight:900;display:flex;justify-content:space-between;align-items:center;}
+.metric-row{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:6px 0;}
+.metric{color:white;padding:7px 10px;border-radius:3px;min-height:42px;}
+.metric small{font-weight:800;display:block;font-size:11px;}
+.metric b{font-size:19px;display:block;}
 .bg-teal{background:#138b75}.bg-blue{background:#405ad9}.bg-gold{background:#9c6a00}.bg-green{background:#10a848}.bg-red{background:#b52e34}.bg-navy{background:#0b4f73}
-.table-box table {width:100%; border-collapse:collapse; font-size:14px;}
-.table-box th {background:#0b4f73; color:#fff; padding:8px; border:1px solid #111; text-align:left;}
-.table-box td {padding:7px; border:1px solid #111; background:#f7fbff;}
-.table-box tr:nth-child(even) td {background:#eaf2fb;}
-.green-row td {background:#86ee9c !important; font-weight:700;}
-.red-row td:first-child {background:#ff4c4c !important; color:#fff; font-weight:800;}
-.red-row td:last-child {background:#ffc5c5 !important;}
-.yellow-row td {background:#fff4bd !important; font-weight:700;}
-.vertical-table th {width:35%;}
-.compact-card {background:#e2ded8; padding:6px 8px; border-radius:7px; margin-bottom:6px;}
-.stButton > button {font-weight:800; border-radius:7px; padding:0.35rem 0.8rem; min-height:34px;}
-.stTextInput > div > div > input, .stNumberInput input, .stSelectbox div[data-baseweb="select"] > div {min-height:32px;}
-label[data-testid="stWidgetLabel"] p {font-weight:700; font-size:13px; margin-bottom:0px;}
-@media(max-width:800px){.metric-row{grid-template-columns:1fr 1fr}.rbm-user{margin-left:0}.rbm-title{min-width:100%;}.report-head{font-size:18px}.rbm-logo{font-size:25px}}
+.whatbox{border:1px solid #b9c3cf;background:#f7fbff;padding:8px;margin:4px 0 7px 0;border-radius:4px;}
+.what-title{font-weight:900;color:#09294a;margin-bottom:4px;font-size:14px;}
+.table-box{border:1px solid #cfd8e2;background:#fff;padding:0;}
+.table-box table{width:100%;border-collapse:collapse;font-size:13px;}
+.table-box th{background:#0b4f73;color:#fff;padding:6px 8px;border:1px solid #1d1d1d;text-align:left;font-weight:900;}
+.table-box td{padding:4px 8px;border:1px solid #1d1d1d;background:#f7fbff;font-weight:700;}
+.table-box tr:nth-child(even) td{background:#edf5ff;}
+.green-row td{background:#a8f2b2 !important;font-weight:900;}
+.red-row td:first-child{background:#ff6262 !important;color:#fff;font-weight:900;}
+.red-row td:last-child{background:#ffcaca !important;font-weight:900;}
+.yellow-row td{background:#fff3b9 !important;font-weight:900;}
+.vertical-table th{width:36%;}
+.stButton>button{font-weight:900;border-radius:4px;padding:.30rem .85rem;min-height:32px;}
+.stTextInput>div>div>input,.stNumberInput input,.stSelectbox div[data-baseweb="select"]>div{min-height:30px;height:30px;font-size:13px;}
+label[data-testid="stWidgetLabel"] p{font-weight:800;font-size:12px;margin-bottom:0px;}
+[data-testid="stForm"]{border:1px solid #b9cfdf;padding:8px;background:#f6fbff;border-radius:4px;}
+/* hide +/- step buttons in number inputs less visually noisy */
+button[aria-label="Step up"],button[aria-label="Step down"]{height:28px;}
+@media(max-width:1050px){.rbm-topbar{grid-template-columns:140px 1fr;}.rbm-nav{grid-column:1/3;justify-content:flex-start;overflow-x:auto}.rbm-actions{grid-column:1/3;justify-content:flex-start}.metric-row{grid-template-columns:1fr 1fr}.control-strip{flex-wrap:wrap}.fast-mode{margin-left:0}.rbm-title{font-size:18px;}}
 </style>
 """,
     unsafe_allow_html=True,
 )
-
 # -----------------------------
 # Helpers
 # -----------------------------
@@ -278,14 +289,7 @@ def set_module(module_name: str):
 def header(title: str):
     username = st.session_state.get("username", "")
     role = st.session_state.get("role", "")
-    st.markdown(f"""
-<div class='rbm-top'>
-  <div><div class='rbm-logo'>RBM AI</div><div class='rbm-sub'>Robotic Business Management</div></div>
-  <div class='rbm-title'>{title}</div>
-  <div class='rbm-user'>{username} | {role}</div>
-</div>
-""", unsafe_allow_html=True)
-
+    active = st.session_state.get("module", title)
     nav_items = []
     if has_perm("can_cost_sheet"):
         nav_items.append(("Cost Sheet", "Cost Sheet"))
@@ -296,22 +300,26 @@ def header(title: str):
     if has_perm("can_add_sort"):
         nav_items.append(("Add Sort", "Add Sort"))
         nav_items.append(("RM Price", "RM Price"))
+    # Users module must be visible only to Developer login.
     if is_developer():
         nav_items.append(("Users", "Users"))
-
-    st.markdown("<div class='nav-wrap'>", unsafe_allow_html=True)
-    total = len(nav_items) + 1
-    cols = st.columns([1] * len(nav_items) + [2]) if nav_items else st.columns([1])
-    for i, (label, module_name) in enumerate(nav_items):
-        with cols[i]:
-            if st.button(label, key=f"nav_{module_name}"):
-                set_module(module_name)
-                st.rerun()
-    with cols[-1]:
-        if st.button("Logout", key="top_logout"):
-            st.session_state.clear()
-            st.rerun()
-    st.markdown("</div>", unsafe_allow_html=True)
+    nav_html = "".join([
+        f"<a class='{ 'active' if active == module else '' }' href='?module={module.replace(' ', '%20')}'> {label}</a>"
+        for label, module in nav_items
+    ])
+    st.markdown(f"""
+<div class='rbm-topbar'>
+  <div><div class='rbm-logo'>RBM AI</div><div class='rbm-sub'>Robotic Business Management</div></div>
+  <div class='rbm-title'>{title}</div>
+  <div class='rbm-nav'>{nav_html}</div>
+  <div class='rbm-actions'>
+    <a class='sync' href='?module={active.replace(' ', '%20')}'>☁ Sync Now</a>
+    <a class='on' href='?module={active.replace(' ', '%20')}'>⊙ ON</a>
+    <div class='userbox'>User: {username} | Role: {role}</div>
+    <a class='logout' href='?logout=1'>↻ Logout</a>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
 def login_page():
     st.markdown("""
@@ -352,13 +360,10 @@ def pick_sort(default: str = "") -> str:
     rows = list_sort_numbers()
     if not default:
         default = first_sort()
-    # Compact single-row selector: user can type or choose from dropdown.
-    c1, c2 = st.columns([1.1, 2.8])
-    with c1:
-        typed = st.text_input("Sort No", value=default, key="sort_typed")
-    with c2:
-        idx = rows.index(default) if default in rows else 0
-        selected = st.selectbox("Select from list", options=rows, index=idx if rows else None, key="sort_pick") if rows else ""
+    # One compact combo-style selector: type is allowed and list is available.
+    idx = rows.index(default) if default in rows else 0
+    selected = st.selectbox("Sort No (Excel D1):", options=rows if rows else [default], index=idx if rows else 0, key="sort_pick")
+    typed = st.text_input("", value=selected or default, key="sort_typed", label_visibility="collapsed")
     return (typed.strip() or selected or "").strip()
 
 def report_metrics(calc: Dict[str, Any]):
@@ -374,21 +379,63 @@ def report_metrics(calc: Dict[str, Any]):
 """, unsafe_allow_html=True)
 
 
+def detailed_cost_rows(row: Dict[str, Any], what_if: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Desktop-style textile costing rows. Uses DB columns if available, otherwise safe defaults."""
+    what_if = what_if or {}
+    local_cost = clean_num(row.get("local_cost"), 0)
+    sales_price = clean_num(row.get("sales_price"), local_cost)
+    cotton = clean_num(row.get("cotton_yarn_cost", row.get("cotton_cost", 225 if local_cost else 0)), 0)
+    waste_pct = clean_num(what_if.get("wastage_pct", row.get("wastage_pct", 6.75)), 6.75)
+    dyeing = clean_num(what_if.get("dyeing_cost", row.get("dyeing_cost", row.get("dying_cost", 110))), 110)
+    dyed_yarn = clean_num(row.get("dyed_yarn_cost"), cotton + (cotton * waste_pct / 100) + dyeing)
+    polyester = clean_num(row.get("polyester_cost"), 0)
+    spandex = clean_num(row.get("spandex_cost"), 13.40 if cotton else 0)
+    kora = clean_num(row.get("kora_yarn_cost"), 0)
+    cotton_prop = clean_num(row.get("cotton_dyed_proportion_cost"), max(0, local_cost - polyester - spandex - kora) if local_cost else dyed_yarn)
+    raw_material = clean_num(row.get("raw_material_cost"), cotton_prop + polyester + spandex + kora)
+    knit = clean_num(what_if.get("knit", row.get("knitting_processing_cost", 90)), 90)
+    knit_waste_pct = clean_num(what_if.get("knit_waste_pct", row.get("knit_waste_pct", 10)), 10)
+    waste_after_cost = clean_num(row.get("wastage_after_knitting_cost"), (raw_material + knit) * knit_waste_pct / 100)
+    costing = clean_num(row.get("costing"), raw_material + knit + waste_after_cost)
+    margin_pct = clean_num(what_if.get("margin", row.get("margin_pct", 10)), 10)
+    margin_value = clean_num(row.get("margin_value"), costing * margin_pct / 100)
+    selling = clean_num(row.get("sales_price"), costing + margin_value)
+    return {
+        "cotton": cotton, "waste_pct": waste_pct, "dyeing": dyeing, "dyed_yarn": dyed_yarn,
+        "cotton_prop": cotton_prop, "polyester": polyester, "spandex": spandex, "kora": kora,
+        "raw_material": raw_material, "knit": knit, "knit_waste_pct": knit_waste_pct,
+        "waste_after_cost": waste_after_cost, "costing": costing, "margin_value": margin_value,
+        "selling": selling, "margin_pct": margin_pct,
+    }
+
+
+def fmt2(v: Any) -> str:
+    return fmt(v, 2)
+
+
 def cost_sheet_page():
-    header("Professional Cost Sheet Report")
-    sort_no = pick_sort(st.session_state.get("last_sort", first_sort()))
+    header("Professional Cost Sheet Report - Sort No Wise Textile Costing")
+    rows = list_sort_numbers()
+    default_sort = st.session_state.get("last_sort", first_sort())
+    st.markdown("<div class='section-head'>Professional Cost Sheet Report - Sort No Wise Textile Costing</div>", unsafe_allow_html=True)
+    # Control strip like desktop: Sort, Refresh, Print, Export in same row.
+    c0, c1, c2, c3, c4, c5 = st.columns([1.3, 2.4, .8, 1.1, 1.3, 4.0])
+    with c0:
+        st.markdown("<div style='font-weight:900;padding-top:8px'>Sort No (Excel D1):</div>", unsafe_allow_html=True)
+    with c1:
+        idx = rows.index(default_sort) if default_sort in rows else 0
+        selected = st.selectbox("Sort No", options=rows if rows else [default_sort], index=idx if rows else 0, label_visibility="collapsed", key="cost_sort_select")
+    with c2:
+        if st.button("Refresh", type="primary", key="refresh_cost"):
+            clear_cache(); st.rerun()
+    with c3:
+        st.button("Print Preview", key="print_preview")
+    with c4:
+        st.button("Export This Sort", key="export_sort")
+    with c5:
+        st.markdown("<div class='fast-mode'>Fast mode: Cost sheet loads selected sort only</div>", unsafe_allow_html=True)
+    sort_no = selected
     st.session_state["last_sort"] = sort_no
-    b1, b2, b3, b4 = st.columns([1,1,1,5])
-    with b1:
-        refresh = st.button("Refresh", type="primary")
-    with b2:
-        if has_perm("can_edit_sort") and st.button("Edit"):
-            st.session_state["edit_sort_no"] = sort_no
-            set_module("Edit Sort")
-            st.rerun()
-    with b3:
-        if has_perm("can_delete_sort") and st.button("Delete"):
-            st.session_state["delete_confirm"] = sort_no
     row = get_sort(sort_no) if sort_no else None
     if not row:
         st.error("No details found for selected Sort No.")
@@ -397,43 +444,77 @@ def cost_sheet_page():
         st.markdown("<div class='report'>", unsafe_allow_html=True)
         calc = compute_cost(row)
         report_metrics(calc)
-        st.markdown("<b>What-If Analysis</b>", unsafe_allow_html=True)
-        w1, w2, w3, w4, w5, w6, w7 = st.columns(7)
-        with w1: currency_rate = st.number_input("Currency", value=clean_num(row.get("currency_rate"), 87), step=1.0)
-        with w2: discount = st.number_input("Discount", value=0.0, step=1.0)
-        with w3: margin = st.number_input("Margin %", value=10.0, step=1.0)
-        with w4: freight = st.number_input("Freight", value=0.0, step=1.0)
-        with w5: commission = st.number_input("Commission", value=0.0, step=1.0)
-        with w6: knit = st.number_input("Knit", value=0.0, step=1.0)
-        with w7: wastage = st.number_input("Wastage", value=0.0, step=1.0)
-        what_calc = compute_cost(row, {"currency_rate": currency_rate, "discount": discount, "margin": margin, "freight": freight, "commission": commission, "knit": knit, "wastage": wastage})
+        base = detailed_cost_rows(row)
+        st.markdown("<div class='whatbox'><div class='what-title'>What-If Analysis</div>", unsafe_allow_html=True)
+        w1,w2,w3,w4,w5,w6,w7,w8,w9 = st.columns([1,1,1,1,1,1,1,1,1])
+        with w1: waste_pct = st.number_input("Waste %", value=float(base['waste_pct']), step=0.25, key="wi_waste")
+        with w2: dyeing = st.number_input("Dyeing Cost Rs.", value=float(base['dyeing']), step=1.0, key="wi_dye")
+        with w3: knit_waste_pct = st.number_input("Knit Waste %", value=float(base['knit_waste_pct']), step=0.25, key="wi_kwaste")
+        with w4: discount = st.number_input("Discount %", value=0.0, step=1.0, key="wi_disc")
+        with w5: currency_rate = st.number_input("Currency Rate", value=clean_num(row.get("currency_rate"),87), step=1.0, key="wi_curr")
+        with w6: freight = st.number_input("Freight INR/KG", value=15.0, step=1.0, key="wi_freight")
+        with w7: commission = st.number_input("Commission %", value=5.0, step=1.0, key="wi_comm")
+        with w8: lc_days = st.number_input("LC Days / Interest", value=0.0, step=1.0, key="wi_lc")
+        with w9: margin_pct = st.number_input("Margin %", value=float(base['margin_pct']), step=1.0, key="wi_margin")
+        cc1,cc2,cc3,cc4 = st.columns([1.4,1,1.2,7])
+        with cc1:
+            country = st.selectbox("Country", ["Bangladesh", "Vietnam", "Sri Lanka", "Japan", "Colombia", "Nagpur", "Istanbul"], key="wi_country")
+        with cc2:
+            st.button("Apply", type="primary", key="wi_apply")
+        with cc3:
+            st.button("Freight Master", key="freight_master")
+        st.markdown("</div>", unsafe_allow_html=True)
+        d = detailed_cost_rows(row, {"wastage_pct": waste_pct, "dyeing_cost": dyeing, "knit_waste_pct": knit_waste_pct, "margin": margin_pct, "knit": base['knit']})
+        discounted_selling = max(0, d['selling'] - (d['selling'] * discount / 100))
+        price_usd_kg = discounted_selling / currency_rate if currency_rate else 0
+        total_inr = discounted_selling + freight + (discounted_selling * commission / 100)
+        total_usd = total_inr / currency_rate if currency_rate else 0
         left, right = st.columns(2)
         with left:
             st.markdown("""
-<div class='table-box'><table><tr><th colspan='2'>Cost Build-up</th></tr>
+<div class='table-box'><table><tr><th colspan='2'>▮ Cost Build-up</th></tr>
 """ + f"""
-<tr><td>Local Cost</td><td>{calc['local_cost']}</td></tr>
-<tr><td>Sales Price</td><td>{calc['sales_price']}</td></tr>
-<tr class='green-row'><td>What-If Cost</td><td>{what_calc['what_if_cost']}</td></tr>
-<tr class='green-row'><td>What-If Sales</td><td>{what_calc['what_if_sales']}</td></tr>
+<tr><td>Cotton Yarn Costing</td><td>{fmt2(d['cotton'])}</td></tr>
+<tr class='green-row'><td>Wastage %</td><td>{fmt2(d['waste_pct'])}</td></tr>
+<tr class='green-row'><td>Dyeing Cost Rs.</td><td>{fmt2(d['dyeing'])}</td></tr>
+<tr><td>Dyed Yarn Cost Rs.</td><td>{fmt2(d['dyed_yarn'])}</td></tr>
+<tr><td>Cotton Dyed Proportion Cost</td><td>{fmt2(d['cotton_prop'])}</td></tr>
+<tr><td>Polyester Cost</td><td>{fmt2(d['polyester'])}</td></tr>
+<tr><td>Spandex Cost</td><td>{fmt2(d['spandex'])}</td></tr>
+<tr><td>Kora Yarn Cost</td><td>{fmt2(d['kora'])}</td></tr>
+<tr class='yellow-row'><td>Raw Material Cost</td><td>{fmt2(d['raw_material'])}</td></tr>
+<tr class='green-row'><td>Knitting + Processing Cost</td><td>{fmt2(d['knit'])}</td></tr>
+<tr class='green-row'><td>Wastage % After Knitting</td><td>{fmt2(d['knit_waste_pct'])}</td></tr>
+<tr><td>Wastage After Knitting Cost</td><td>{fmt2(d['waste_after_cost'])}</td></tr>
+<tr class='yellow-row'><td>Costing</td><td>{fmt2(d['costing'])}</td></tr>
+<tr class='green-row'><td>Margin</td><td>{fmt2(d['margin_value'])}</td></tr>
+<tr class='yellow-row'><td>Selling Price</td><td>{fmt2(discounted_selling)}</td></tr>
 </table></div>
 """, unsafe_allow_html=True)
         with right:
             st.markdown("""
-<div class='table-box'><table><tr><th colspan='2'>Export / Price Calculation</th></tr>
+<div class='table-box'><table><tr><th colspan='2'>▣ Export / Price Calculation</th></tr>
 """ + f"""
-<tr class='green-row'><td>Currency Rate</td><td>{what_calc['currency_rate']}</td></tr>
-<tr class='red-row'><td>Discount If Any</td><td>{fmt(discount)}</td></tr>
-<tr><td>Price USD/KG</td><td>{calc['usd_kg']}</td></tr>
+<tr class='green-row'><td>Currency Rate</td><td>{fmt2(currency_rate)}</td></tr>
+<tr class='red-row'><td>Discount If Any</td><td>{fmt2(discount)}</td></tr>
+<tr class='yellow-row'><td>Price USD/KG</td><td>{fmt2(price_usd_kg)}</td></tr>
 <tr><td>Price USD/Mtrs</td><td>{calc['usd_mtrs']}</td></tr>
 <tr><td>Price USD/Yds</td><td>{calc['usd_yds']}</td></tr>
-<tr><td>Total Cost INR/KG</td><td>{calc['total_cost_inr_kg']}</td></tr>
-<tr><td>Total Cost USD/KG</td><td>{calc['total_cost_usd_kg']}</td></tr>
-<tr class='yellow-row'><td>What-If USD/KG</td><td>{what_calc['what_if_usd']}</td></tr>
+<tr><td>Linear Mtrs/Kg</td><td>{fmt2(row.get('linear_mtrs_kg', 1.70))}</td></tr>
+<tr><td>Linear Yds/Kg</td><td>{fmt2(row.get('linear_yds_kg', 1.85))}</td></tr>
+<tr><td>Width CMS</td><td>{calc['finish_width']}</td></tr>
+<tr><td>Width Inch</td><td>{fmt2(clean_num(row.get('finish_width'))/2.54 if clean_num(row.get('finish_width')) else 0)}</td></tr>
+<tr><td>Weight GSM</td><td>{calc['finish_gsm']}</td></tr>
+<tr><td>Price Per KG INR</td><td>{fmt2(discounted_selling)}</td></tr>
+<tr class='green-row'><td>Freight INR/KG</td><td>{fmt2(freight)}</td></tr>
+<tr class='green-row'><td>Commission %</td><td>{fmt2(commission)}</td></tr>
+<tr><td>Commission Amount</td><td>{fmt2(discounted_selling * commission / 100)}</td></tr>
+<tr class='green-row'><td>LC Days / Interest</td><td>{fmt2(lc_days)}</td></tr>
+<tr class='yellow-row'><td>Total Cost INR/KG</td><td>{fmt2(total_inr)}</td></tr>
+<tr class='yellow-row'><td>Total Cost USD/KG</td><td>{fmt2(total_usd)}</td></tr>
 </table></div>
 """, unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
-
 
 def vertical_report(title: str, items: List[tuple]):
     header(title)
@@ -552,7 +633,7 @@ def users_page():
         c1, c2, c3 = st.columns(3)
         with c1: username = st.text_input("Username")
         with c2: password = st.text_input("Password", help="blank = keep old password for existing user")
-        with c3: role = st.selectbox("Role", ["Admin", "User", "Developer"])
+        with c3: role = st.selectbox("Role", ["Admin", "User"])
         cols = st.columns(6)
         perm_values = {}
         for i, (k, label) in enumerate(PERMISSIONS):
@@ -607,10 +688,21 @@ def delete_area():
 # -----------------------------
 # Main router
 # -----------------------------
+if str(st.query_params.get("logout", "")) == "1":
+    st.session_state.clear()
+    try:
+        st.query_params.clear()
+    except Exception:
+        pass
+    st.rerun()
+
 if not st.session_state.get("username"):
     login_page()
 else:
-    module = st.session_state.get("module") or st.query_params.get("module", "")
+    qp_module = st.query_params.get("module", "")
+    module = qp_module or st.session_state.get("module", "")
+    if qp_module:
+        st.session_state["module"] = qp_module
     if not module:
         if has_perm("can_cost_sheet"):
             module = "Cost Sheet"
