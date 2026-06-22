@@ -31,18 +31,20 @@ st.markdown("""
 <style>
 :root{--blue:#0b4f73;--green:#0f8d75;--red:#e52525;--bg:#eaf6fb;--line:#222;}
 [data-testid="stAppViewContainer"]{background:var(--bg);} 
-.block-container{padding:0.15rem 0.35rem 0.25rem 0.35rem; max-width:100%;}
+.block-container{padding:0.08rem 0.28rem 0.25rem 0.28rem; max-width:100%;}
 [data-testid="stHeader"], [data-testid="stToolbar"]{display:none!important; height:0!important;}
-#MainMenu, footer{visibility:hidden;} div[data-testid="stVerticalBlock"]{gap:0.22rem;}
-.rbm-top{background:#0b4f73;color:#fff;height:86px;display:flex;align-items:center;gap:10px;padding:0 10px;border-bottom:3px solid #d6eef8;overflow:hidden;}
+#MainMenu, footer{visibility:hidden;} div[data-testid="stVerticalBlock"]{gap:0.15rem;}
+.rbm-top{background:#0b4f73;color:#fff;height:78px;display:flex;align-items:center;gap:10px;padding:0 10px;border-bottom:3px solid #d6eef8;overflow:hidden;}
 .logo{width:145px;min-width:145px}.logo .big{font-size:29px;font-weight:900;line-height:28px}.logo .sub{font-size:9px;font-weight:800;}
-.titlebox{background:#108d76;height:56px;width:260px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;border-bottom:4px solid #d3f5ee;}
+.titlebox{background:#108d76;height:54px;width:250px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;border-bottom:4px solid #d3f5ee;}
 .nav{display:flex;gap:6px;align-items:center;flex-wrap:nowrap;flex:1;justify-content:center;}
-a.navbtn{text-decoration:none;background:#fff;color:#001b34;border:1px solid #b8cee8;border-radius:5px;padding:9px 15px;font-size:14px;font-weight:800;white-space:nowrap;box-shadow:0 1px 2px rgba(0,0,0,.15)}
+a.navbtn{text-decoration:none;background:#fff;color:#001b34;border:1px solid #b8cee8;border-radius:5px;padding:9px 15px;font-size:14px;font-weight:900;white-space:nowrap;box-shadow:0 1px 2px rgba(0,0,0,.15)}
 a.navbtn.active{background:#166fe5;color:white;border-color:#166fe5;}
 .top-actions{display:flex;gap:7px;align-items:center;white-space:nowrap;}
-.top-actions span,.logout{font-size:12px;font-weight:800}.sync,.on,.logout{border-radius:4px;padding:9px 12px;color:#fff;font-weight:900}.sync{background:#0ab052}.on{background:#087e20}.logout{background:#d81919;text-decoration:none}
+.sync,.on,.logout{border-radius:4px;padding:9px 12px;color:#fff;font-weight:900;font-size:12px}.sync{background:#0ab052}.on{background:#087e20}.logout{background:#d81919;text-decoration:none}
 .userbox{text-align:right;font-size:12px;font-weight:900;min-width:150px;}
+.login-wrap{max-width:470px;margin:34px auto 0 auto;border:1px solid #b8cfe2;border-radius:8px;padding:18px 22px;background:#f8fcff;box-shadow:0 4px 14px rgba(0,0,0,.12)}
+.login-title{text-align:center;color:#0b4f73;font-size:24px;font-weight:900;margin-bottom:6px}.login-sub{text-align:center;color:#234;font-size:13px;font-weight:700;margin-bottom:10px}
 .control-strip{background:#dedbd5;padding:5px 10px;display:flex;align-items:center;gap:8px;white-space:nowrap;}
 .fast{margin-left:18px;color:#008000;font-weight:900;font-size:12px}.label{font-weight:900}.small-note{font-size:11px;color:#095;}
 .card-row{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:2px 0 0 0}.kpi{height:27px;color:white;font-weight:900;display:flex;align-items:center;padding:0 9px;font-size:12px;}
@@ -50,8 +52,8 @@ a.navbtn.active{background:#166fe5;color:white;border-color:#166fe5;}
 .sheet-head{background:#0b4f73;color:#fff;height:37px;display:flex;align-items:center;padding:0 10px;font-size:17px;font-weight:900;margin-top:3px}.sheet-head .sort{margin-left:auto;color:#fff200;font-size:18px;}
 .whatif{border:1px solid #a7b7c6;background:#f7fbff;padding:4px 8px;margin:0 0 2px 0}.whatif-title{font-size:13px;font-weight:900;color:#01223a;margin-bottom:4px}
 .table-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:3px}.tblbox{border:1px solid #b2c1cf;background:white}.tbltitle{background:#0b4f73;color:#fff;font-weight:900;padding:5px 9px;font-size:13px}.rbmtable{width:100%;border-collapse:collapse;font-size:12px;font-weight:700}.rbmtable td{border:1px solid #333;padding:4px 7px}.rbmtable td:nth-child(2){font-weight:700}.row-green td{background:#91f0a0}.row-red td:first-child{background:#ff5555;color:white}.row-red td:nth-child(2){background:#ffc7c7}.row-yellow td{background:#fff3b5}.row-blue td{background:#eef6ff}.footer{position:fixed;bottom:0;left:0;right:0;background:#0b4f73;color:#fff;padding:8px 20px;font-size:13px;font-weight:800;display:flex;justify-content:space-between;z-index:10}.footer b{color:#ffe600}.content-pad{padding-bottom:28px}
-.stButton button{height:34px;padding:2px 8px;font-weight:800;border-radius:4px;margin:0!important}.stSelectbox label,.stNumberInput label,.stTextInput label{font-weight:800;color:#001b34;font-size:12px!important}.stSelectbox div,.stTextInput input,.stNumberInput input{font-size:13px!important}.stNumberInput button{height:32px!important;min-height:32px!important}.login-card{max-width:470px;margin:25px auto;border:1px solid #b8cfe2;border-radius:8px;padding:18px;background:#f8fcff}.warn{background:#fde9ed;color:#9b1230;padding:10px;border-radius:6px;margin:10px 0}.ok{background:#e8fff0;color:#006a24;padding:10px;border-radius:6px;margin:10px 0}
-@media(max-width:850px){.rbm-top{height:auto;flex-wrap:wrap;padding:8px}.titlebox{width:100%;height:42px}.nav{justify-content:flex-start;overflow-x:auto}.card-row,.table-grid{grid-template-columns:1fr}.top-actions{flex-wrap:wrap}.footer{position:static}.control-strip{flex-wrap:wrap}}
+.stButton button{height:34px;padding:2px 8px;font-weight:800;border-radius:4px;margin:0!important}.stSelectbox label,.stNumberInput label,.stTextInput label{font-weight:800;color:#001b34;font-size:12px!important}.stSelectbox div,.stTextInput input,.stNumberInput input{font-size:13px!important}.stNumberInput button{height:32px!important;min-height:32px!important}.warn{background:#fde9ed;color:#9b1230;padding:10px;border-radius:6px;margin:10px 0}.ok{background:#e8fff0;color:#006a24;padding:10px;border-radius:6px;margin:10px 0}
+@media(max-width:1000px){.rbm-top{height:auto;flex-wrap:wrap;padding:8px}.titlebox{width:220px;height:42px}.nav{justify-content:flex-start;overflow-x:auto}.card-row,.table-grid{grid-template-columns:1fr}.top-actions{flex-wrap:wrap}.footer{position:static}.control-strip{flex-wrap:wrap}a.navbtn{padding:8px 11px;font-size:13px}}
 </style>
 """, unsafe_allow_html=True)
 
@@ -173,14 +175,6 @@ if st.session_state.get("_app_version") != APP_VERSION:
             st.session_state.pop(_k, None)
     st.session_state["_app_version"] = APP_VERSION
 
-# IMPORTANT: Do not use URL/query-string navigation for modules.
-# Streamlit Cloud can recreate the script session when URL parameters change,
-# which looks like logout. Module switching is now only by Streamlit session buttons.
-try:
-    if st.query_params:
-        st.query_params.clear()
-except Exception:
-    pass
 
 def current_user_row()->Dict[str,Any]:
     df=load_users()
@@ -210,35 +204,42 @@ def do_logout():
     st.session_state.module="Cost Sheet"
 
 def header(title="Costing"):
+    # Read module from query params only after successful login. This gives top blue HTML buttons
+    # without destroying Streamlit session, so module click must not logout.
+    try:
+        if st.session_state.logged_in and "logout" in st.query_params:
+            st.query_params.clear(); do_logout(); st.rerun()
+        if st.session_state.logged_in and "module" in st.query_params:
+            qm = st.query_params.get("module")
+            if isinstance(qm, list): qm = qm[0]
+            if qm in MODULES and has_perm(qm):
+                st.session_state.module = qm
+    except Exception:
+        pass
     role=html.escape(str(st.session_state.role or "")); user=html.escape(str(st.session_state.username or ""))
+    visible=[m for m in MODULES if has_perm(m)]
+    nav_html="".join([f'<a class="navbtn {"active" if st.session_state.get("module")==m else ""}" href="?module={html.escape(m).replace(" ", "%20")}">{html.escape(m)}</a>' for m in visible])
     st.markdown(f"""
 <div class="rbm-top">
   <div class="logo"><div class="big">RBM AI</div><div class="sub">Robotic Business Management</div></div>
   <div class="titlebox">{html.escape(title)}</div>
-  <div style="flex:1"></div>
+  <div class="nav">{nav_html}</div>
   <div class="top-actions"><span class="sync">☁ Sync Now</span><span class="on">⦿ ON</span></div>
   <div class="userbox">User: {user} | Role: {role}</div>
+  <a class="logout" href="?logout=1">↻ Logout</a>
 </div>
 """, unsafe_allow_html=True)
-    # Real Streamlit buttons are used for modules. No HTML links, no URL params.
-    # This prevents logout/session loss when switching modules.
-    visible=[m for m in MODULES if has_perm(m)]
-    cols = st.columns([1]*len(visible)+[0.9], gap="small") if visible else st.columns([1])
-    for i,m in enumerate(visible):
-        btn_type = "primary" if st.session_state.get("module")==m else "secondary"
-        cols[i].button(m, key=f"nav_btn_{m}", type=btn_type, use_container_width=True, on_click=set_module, args=(m,))
-    if visible:
-        cols[-1].button("Logout", key="nav_logout_btn", type="secondary", use_container_width=True, on_click=do_logout)
 
 def login_page():
     st.markdown("""
 <div class="rbm-top"><div class="logo"><div class="big">RBM AI</div><div class="sub">Robotic Business Management</div></div><div class="titlebox">Costing</div></div>
 """, unsafe_allow_html=True)
-    st.markdown('<div class="login-card">', unsafe_allow_html=True)
-    st.markdown("### Secure Client Login")
-    u=st.text_input("Username", value="admin", key="login_u")
-    p=st.text_input("Password", value="", type="password", key="login_p")
-    if st.button("Login", type="primary"):
+    st.markdown('<div class="login-wrap"><div class="login-title">Secure Client Login</div><div class="login-sub">RBM Textile Costing</div>', unsafe_allow_html=True)
+    with st.form("login_form", clear_on_submit=False):
+        u=st.text_input("Username", value="admin", key="login_u")
+        p=st.text_input("Password", value="", type="password", key="login_p")
+        submitted=st.form_submit_button("Login", type="primary")
+    if submitted:
         users=load_users()
         if "username" in users.columns and "password" in users.columns:
             m=users[(users["username"].astype(str).str.lower()==u.strip().lower()) & (users["password"].astype(str)==p.strip())]
@@ -247,6 +248,8 @@ def login_page():
                 st.session_state.username=m.iloc[0]["username"]
                 st.session_state.role=m.iloc[0].get("role","User")
                 st.session_state.module="Cost Sheet"
+                try: st.query_params.clear()
+                except Exception: pass
                 st.rerun()
         st.markdown('<div class="warn">Wrong username or password.</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
@@ -510,6 +513,18 @@ def users_page():
 if not st.session_state.logged_in:
     login_page()
     st.stop()
+
+# Apply requested module from the top blue nav links without logging out.
+try:
+    if "logout" in st.query_params:
+        st.query_params.clear(); do_logout(); st.rerun()
+    if "module" in st.query_params:
+        qm = st.query_params.get("module")
+        if isinstance(qm, list): qm = qm[0]
+        if qm in MODULES and has_perm(qm):
+            st.session_state.module = qm
+except Exception:
+    pass
 
 module=st.session_state.get("module","Cost Sheet")
 if not has_perm(module):
