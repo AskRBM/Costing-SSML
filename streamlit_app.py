@@ -15,6 +15,7 @@ DATA_DIR = BASE_DIR / "data"
 GROUP_CSV = DATA_DIR / "group_costing.csv"
 RM_CSV = DATA_DIR / "rm_price_master.csv"
 USERS_CSV = DATA_DIR / "users_default.csv"
+APP_VERSION = "2026-06-22-final-no-url-nav-calc-v3"
 
 MODULES = ["Cost Sheet", "Cost - Local", "Cost - Export", "Add Sort", "RM Price", "Users"]
 PERM = {
@@ -49,7 +50,7 @@ a.navbtn.active{background:#166fe5;color:white;border-color:#166fe5;}
 .sheet-head{background:#0b4f73;color:#fff;height:37px;display:flex;align-items:center;padding:0 10px;font-size:17px;font-weight:900;margin-top:3px}.sheet-head .sort{margin-left:auto;color:#fff200;font-size:18px;}
 .whatif{border:1px solid #a7b7c6;background:#f7fbff;padding:4px 8px;margin:0 0 2px 0}.whatif-title{font-size:13px;font-weight:900;color:#01223a;margin-bottom:4px}
 .table-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:3px}.tblbox{border:1px solid #b2c1cf;background:white}.tbltitle{background:#0b4f73;color:#fff;font-weight:900;padding:5px 9px;font-size:13px}.rbmtable{width:100%;border-collapse:collapse;font-size:12px;font-weight:700}.rbmtable td{border:1px solid #333;padding:4px 7px}.rbmtable td:nth-child(2){font-weight:700}.row-green td{background:#91f0a0}.row-red td:first-child{background:#ff5555;color:white}.row-red td:nth-child(2){background:#ffc7c7}.row-yellow td{background:#fff3b5}.row-blue td{background:#eef6ff}.footer{position:fixed;bottom:0;left:0;right:0;background:#0b4f73;color:#fff;padding:8px 20px;font-size:13px;font-weight:800;display:flex;justify-content:space-between;z-index:10}.footer b{color:#ffe600}.content-pad{padding-bottom:28px}
-.stButton button{height:35px;padding:2px 13px;font-weight:800;border-radius:4px}.stSelectbox label,.stNumberInput label,.stTextInput label{font-weight:800;color:#001b34;font-size:12px!important}.stSelectbox div,.stTextInput input,.stNumberInput input{font-size:13px!important}.stNumberInput button{height:32px!important;min-height:32px!important}.login-card{max-width:470px;margin:25px auto;border:1px solid #b8cfe2;border-radius:8px;padding:18px;background:#f8fcff}.warn{background:#fde9ed;color:#9b1230;padding:10px;border-radius:6px;margin:10px 0}.ok{background:#e8fff0;color:#006a24;padding:10px;border-radius:6px;margin:10px 0}
+.stButton button{height:34px;padding:2px 8px;font-weight:800;border-radius:4px;margin:0!important}.stSelectbox label,.stNumberInput label,.stTextInput label{font-weight:800;color:#001b34;font-size:12px!important}.stSelectbox div,.stTextInput input,.stNumberInput input{font-size:13px!important}.stNumberInput button{height:32px!important;min-height:32px!important}.login-card{max-width:470px;margin:25px auto;border:1px solid #b8cfe2;border-radius:8px;padding:18px;background:#f8fcff}.warn{background:#fde9ed;color:#9b1230;padding:10px;border-radius:6px;margin:10px 0}.ok{background:#e8fff0;color:#006a24;padding:10px;border-radius:6px;margin:10px 0}
 @media(max-width:850px){.rbm-top{height:auto;flex-wrap:wrap;padding:8px}.titlebox{width:100%;height:42px}.nav{justify-content:flex-start;overflow-x:auto}.card-row,.table-grid{grid-template-columns:1fr}.top-actions{flex-wrap:wrap}.footer{position:static}.control-strip{flex-wrap:wrap}}
 </style>
 """, unsafe_allow_html=True)
@@ -60,12 +61,20 @@ def norm_col(c:str)->str:
 
 @st.cache_data(show_spinner=False)
 def read_csv(path_str: str) -> pd.DataFrame:
-    p=Path(path_str)
-    if not p.exists():
-        return pd.DataFrame()
-    df=pd.read_csv(p, dtype=str).fillna("")
-    df.columns=[norm_col(c) for c in df.columns]
-    return df
+    p = Path(path_str)
+    # Important: GitHub users sometimes upload CSV files in repository root instead of data/ folder.
+    # This fallback prevents FileNotFoundError and keeps the app running.
+    candidates = [p]
+    if p.parent.name == "data":
+        candidates.append(BASE_DIR / p.name)
+    else:
+        candidates.append(DATA_DIR / p.name)
+    for cand in candidates:
+        if cand.exists() and cand.stat().st_size > 0:
+            df = pd.read_csv(cand, dtype=str).fillna("")
+            df.columns = [norm_col(c) for c in df.columns]
+            return df
+    return pd.DataFrame()
 
 def load_group() -> pd.DataFrame:
     if "group_df" not in st.session_state:
@@ -156,17 +165,22 @@ def init_state():
     st.session_state.setdefault("whatif", {})
 
 init_state()
+# Clear old What-If session values once after every new code upload.
+# This avoids stale browser session values changing the desktop-correct calculation.
+if st.session_state.get("_app_version") != APP_VERSION:
+    for _k in list(st.session_state.keys()):
+        if str(_k).startswith("wf_"):
+            st.session_state.pop(_k, None)
+    st.session_state["_app_version"] = APP_VERSION
 
-# Query module without losing login
-qp = st.query_params
-if "logout" in qp:
-    st.session_state.logged_in=False
-    st.session_state.username=""
-    st.session_state.role=""
-    try: st.query_params.clear()
-    except Exception: pass
-if "module" in qp and st.session_state.logged_in:
-    st.session_state.module = qp.get("module", "Cost Sheet")
+# IMPORTANT: Do not use URL/query-string navigation for modules.
+# Streamlit Cloud can recreate the script session when URL parameters change,
+# which looks like logout. Module switching is now only by Streamlit session buttons.
+try:
+    if st.query_params:
+        st.query_params.clear()
+except Exception:
+    pass
 
 def current_user_row()->Dict[str,Any]:
     df=load_users()
@@ -186,19 +200,35 @@ def has_perm(module:str)->bool:
 def nav_url(m:str)->str:
     return "?module=" + m.replace(" ", "%20")
 
+def set_module(m:str):
+    st.session_state.module = m
+
+def do_logout():
+    st.session_state.logged_in=False
+    st.session_state.username=""
+    st.session_state.role=""
+    st.session_state.module="Cost Sheet"
+
 def header(title="Costing"):
     role=html.escape(str(st.session_state.role or "")); user=html.escape(str(st.session_state.username or ""))
-    nav_html="".join([f'<a class="navbtn {"active" if st.session_state.module==m else ""}" href="{nav_url(m)}">{html.escape(m)}</a>' for m in MODULES if has_perm(m)])
     st.markdown(f"""
 <div class="rbm-top">
   <div class="logo"><div class="big">RBM AI</div><div class="sub">Robotic Business Management</div></div>
   <div class="titlebox">{html.escape(title)}</div>
-  <div class="nav">{nav_html}</div>
+  <div style="flex:1"></div>
   <div class="top-actions"><span class="sync">☁ Sync Now</span><span class="on">⦿ ON</span></div>
   <div class="userbox">User: {user} | Role: {role}</div>
-  <a class="logout" href="?logout=1">↻ Logout</a>
 </div>
 """, unsafe_allow_html=True)
+    # Real Streamlit buttons are used for modules. No HTML links, no URL params.
+    # This prevents logout/session loss when switching modules.
+    visible=[m for m in MODULES if has_perm(m)]
+    cols = st.columns([1]*len(visible)+[0.9], gap="small") if visible else st.columns([1])
+    for i,m in enumerate(visible):
+        btn_type = "primary" if st.session_state.get("module")==m else "secondary"
+        cols[i].button(m, key=f"nav_btn_{m}", type=btn_type, use_container_width=True, on_click=set_module, args=(m,))
+    if visible:
+        cols[-1].button("Logout", key="nav_logout_btn", type="secondary", use_container_width=True, on_click=do_logout)
 
 def login_page():
     st.markdown("""
@@ -304,7 +334,7 @@ def cost_sheet_page():
     header("Costing")
     sorts=sort_options()
     if not sorts:
-        st.error("group_costing.csv not found or empty. Upload data/group_costing.csv in GitHub.")
+        st.error("group_costing.csv not found or empty. Upload group_costing.csv in GitHub root OR data/group_costing.csv.")
         return
     selected=st.session_state.get("selected_sort", sorts[0])
     if selected not in sorts: selected=sorts[0]
@@ -386,7 +416,7 @@ def cost_sheet_page():
         ("Weight GSM",getv(row,'weight_gsm','finish_gsm')),("Price Per KG INR",getv(row,'price_per_kg_inr','selling_price')),("Freight INR/KG",getv(row,'freight_inr_per_kg')),
         ("Commission %",getv(row,'commission_pct', default=derive_commission_pct(row))),("Commission Amount",getv(row,'commission')),
         ("LC Days / Interest",getv(row,'lc_days_interest','lc_days_interest_amount','lc_days__interest_15_pm')),
-        ("Total Cost INR/KG",getv(row,'total_cost_pricefreightcomlc_int_inr__kg')),("Total Cost USD/KG",getv(row,'total_cost_usd__kg')),
+        ("Total Cost INR/KG",getv(row,'total_cost_pricefreightcomlc_int_inr__kg','total_cost_pricefreightcomlc_int','total_cost_inr_kg','total_cost_inr')),("Total Cost USD/KG",getv(row,'total_cost_usd__kg')),
     ]
     st.markdown(f'<div class="table-grid">{html_table("Cost Build-up",cost_rows)}{html_table("Export / Price Calculation",export_rows)}</div>', unsafe_allow_html=True)
     st.markdown('<div class="footer"><span>Publisher: <b>RBM Textile Solutions</b></span><span>Offline Textile Costing • Actual Excel Data • Print Preview • Backup</span><span>Made in India 🇮🇳</span></div><div class="content-pad"></div>', unsafe_allow_html=True)
