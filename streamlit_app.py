@@ -39,23 +39,24 @@ st.markdown(
     """
 <style>
 [data-testid="stAppViewContainer"] {background:#eaf6fb;}
-.block-container {padding-top:0.35rem; padding-left:0.65rem; padding-right:0.65rem; max-width:100%;}
+.block-container {padding-top:0.05rem; padding-left:0.45rem; padding-right:0.45rem; max-width:100%;}
 [data-testid="stHeader"] {height:0rem; background:transparent;}
+[data-testid="stToolbar"] {display:none;}
 #MainMenu, footer {visibility:hidden;}
-.rbm-top {background:#0b4f73; color:white; padding:6px 12px; border-radius:8px 8px 0 0; display:flex; gap:16px; align-items:center; flex-wrap:wrap;}
-.rbm-logo {font-size:30px; font-weight:900; line-height:28px;}
-.rbm-sub {font-size:11px; font-weight:700;}
-.rbm-title {background:#138b75; color:white; padding:9px 18px; font-size:23px; font-weight:900; min-width:260px; text-align:center;}
+div[data-testid="stVerticalBlock"] {gap:0.35rem;}
+.rbm-top {background:#0b4f73; color:white; padding:5px 10px; border-radius:7px 7px 0 0; display:flex; gap:12px; align-items:center; flex-wrap:wrap;}
+.rbm-logo {font-size:28px; font-weight:900; line-height:24px;}
+.rbm-sub {font-size:10px; font-weight:700;}
+.rbm-title {background:#138b75; color:white; padding:7px 18px; font-size:22px; font-weight:900; min-width:250px; text-align:center;}
 .rbm-user {margin-left:auto; font-size:13px; font-weight:700; text-align:right;}
-.rbm-nav {background:#0b4f73; padding:0 12px 7px 12px; display:flex; gap:7px; flex-wrap:wrap;}
-.rbm-btn {background:white; color:#003b5c; border:1px solid #a9b8d8; padding:8px 14px; border-radius:7px; text-decoration:none; font-weight:700; display:inline-block;}
-.section-head {background:#138b75; color:white; font-size:24px; font-weight:900; padding:8px 12px; margin:0 0 8px 0;}
-.report {background:white; border:1px solid #d3d3d3; padding:10px; border-radius:8px; box-shadow:0 2px 9px rgba(0,0,0,.12);}
-.report-head {background:#0b4f73; color:white; padding:10px 16px; font-size:24px; font-weight:900; display:flex; justify-content:space-between; align-items:center;}
-.metric-row {display:grid; grid-template-columns:repeat(5,1fr); gap:7px; margin:8px 0;}
-.metric {color:white; padding:9px 12px; border-radius:3px; min-height:50px;}
-.metric small{font-weight:800; display:block; font-size:12px;}
-.metric b{font-size:21px; display:block;}
+.nav-wrap {background:#0b4f73; padding:0 8px 6px 8px; border-radius:0 0 7px 7px; margin-bottom:5px;}
+.section-head {background:#138b75; color:white; font-size:23px; font-weight:900; padding:6px 10px; margin:0 0 6px 0;}
+.report {background:white; border:1px solid #d3d3d3; padding:8px; border-radius:8px; box-shadow:0 2px 9px rgba(0,0,0,.12);}
+.report-head {background:#0b4f73; color:white; padding:9px 14px; font-size:23px; font-weight:900; display:flex; justify-content:space-between; align-items:center;}
+.metric-row {display:grid; grid-template-columns:repeat(5,1fr); gap:6px; margin:7px 0;}
+.metric {color:white; padding:7px 10px; border-radius:3px; min-height:43px;}
+.metric small{font-weight:800; display:block; font-size:11px;}
+.metric b{font-size:19px; display:block;}
 .bg-teal{background:#138b75}.bg-blue{background:#405ad9}.bg-gold{background:#9c6a00}.bg-green{background:#10a848}.bg-red{background:#b52e34}.bg-navy{background:#0b4f73}
 .table-box table {width:100%; border-collapse:collapse; font-size:14px;}
 .table-box th {background:#0b4f73; color:#fff; padding:8px; border:1px solid #111; text-align:left;}
@@ -66,10 +67,11 @@ st.markdown(
 .red-row td:last-child {background:#ffc5c5 !important;}
 .yellow-row td {background:#fff4bd !important; font-weight:700;}
 .vertical-table th {width:35%;}
-.compact-card {background:#e2ded8; padding:8px; border-radius:8px; margin-bottom:8px;}
-.stButton > button {font-weight:800; border-radius:7px; padding:0.45rem 1.1rem;}
-.stTextInput > div > div > input, .stNumberInput input {min-height:35px;}
-@media(max-width:800px){.metric-row{grid-template-columns:1fr}.rbm-user{margin-left:0}.rbm-title{min-width:100%;}.report-head{font-size:18px}.rbm-logo{font-size:25px}}
+.compact-card {background:#e2ded8; padding:6px 8px; border-radius:7px; margin-bottom:6px;}
+.stButton > button {font-weight:800; border-radius:7px; padding:0.35rem 0.8rem; min-height:34px;}
+.stTextInput > div > div > input, .stNumberInput input, .stSelectbox div[data-baseweb="select"] > div {min-height:32px;}
+label[data-testid="stWidgetLabel"] p {font-weight:700; font-size:13px; margin-bottom:0px;}
+@media(max-width:800px){.metric-row{grid-template-columns:1fr 1fr}.rbm-user{margin-left:0}.rbm-title{min-width:100%;}.report-head{font-size:18px}.rbm-logo{font-size:25px}}
 </style>
 """,
     unsafe_allow_html=True,
@@ -265,6 +267,14 @@ def require_login():
         st.stop()
 
 
+def set_module(module_name: str):
+    st.session_state["module"] = module_name
+    try:
+        st.query_params["module"] = module_name
+    except Exception:
+        pass
+
+
 def header(title: str):
     username = st.session_state.get("username", "")
     role = st.session_state.get("role", "")
@@ -275,6 +285,7 @@ def header(title: str):
   <div class='rbm-user'>{username} | {role}</div>
 </div>
 """, unsafe_allow_html=True)
+
     nav_items = []
     if has_perm("can_cost_sheet"):
         nav_items.append(("Cost Sheet", "Cost Sheet"))
@@ -287,8 +298,20 @@ def header(title: str):
         nav_items.append(("RM Price", "RM Price"))
     if is_developer():
         nav_items.append(("Users", "Users"))
-    st.markdown("<div class='rbm-nav'>" + "".join([f"<a class='rbm-btn' href='?module={m}'>{label}</a>" for label, m in nav_items]) + "</div>", unsafe_allow_html=True)
 
+    st.markdown("<div class='nav-wrap'>", unsafe_allow_html=True)
+    total = len(nav_items) + 1
+    cols = st.columns([1] * len(nav_items) + [2]) if nav_items else st.columns([1])
+    for i, (label, module_name) in enumerate(nav_items):
+        with cols[i]:
+            if st.button(label, key=f"nav_{module_name}"):
+                set_module(module_name)
+                st.rerun()
+    with cols[-1]:
+        if st.button("Logout", key="top_logout"):
+            st.session_state.clear()
+            st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
 
 def login_page():
     st.markdown("""
@@ -316,6 +339,7 @@ def login_page():
                     st.session_state["username"] = username.strip()
                     st.session_state["role"] = user.get("role", "User")
                     st.session_state["perms"] = {k: bool(user.get(k)) for k, _ in PERMISSIONS}
+                    st.session_state["module"] = "Cost Sheet" if bool(user.get("can_cost_sheet")) or user.get("role") == "Developer" else "Cost - Local"
                     audit("LOGIN", "", username.strip())
                     st.rerun()
                 else:
@@ -328,14 +352,14 @@ def pick_sort(default: str = "") -> str:
     rows = list_sort_numbers()
     if not default:
         default = first_sort()
-    c1, c2 = st.columns([2, 4])
+    # Compact single-row selector: user can type or choose from dropdown.
+    c1, c2 = st.columns([1.1, 2.8])
     with c1:
         typed = st.text_input("Sort No", value=default, key="sort_typed")
     with c2:
         idx = rows.index(default) if default in rows else 0
-        selected = st.selectbox("Dropdown", options=rows, index=idx if rows else None, label_visibility="collapsed") if rows else ""
-    return typed.strip() or selected
-
+        selected = st.selectbox("Select from list", options=rows, index=idx if rows else None, key="sort_pick") if rows else ""
+    return (typed.strip() or selected or "").strip()
 
 def report_metrics(calc: Dict[str, Any]):
     st.markdown(f"""
@@ -360,7 +384,7 @@ def cost_sheet_page():
     with b2:
         if has_perm("can_edit_sort") and st.button("Edit"):
             st.session_state["edit_sort_no"] = sort_no
-            st.query_params["module"] = "Edit Sort"
+            set_module("Edit Sort")
             st.rerun()
     with b3:
         if has_perm("can_delete_sort") and st.button("Delete"):
@@ -373,7 +397,7 @@ def cost_sheet_page():
         st.markdown("<div class='report'>", unsafe_allow_html=True)
         calc = compute_cost(row)
         report_metrics(calc)
-        st.markdown("**What-If Analysis**")
+        st.markdown("<b>What-If Analysis</b>", unsafe_allow_html=True)
         w1, w2, w3, w4, w5, w6, w7 = st.columns(7)
         with w1: currency_rate = st.number_input("Currency", value=clean_num(row.get("currency_rate"), 87), step=1.0)
         with w2: discount = st.number_input("Discount", value=0.0, step=1.0)
@@ -586,7 +610,7 @@ def delete_area():
 if not st.session_state.get("username"):
     login_page()
 else:
-    module = st.query_params.get("module", "")
+    module = st.session_state.get("module") or st.query_params.get("module", "")
     if not module:
         if has_perm("can_cost_sheet"):
             module = "Cost Sheet"
@@ -596,10 +620,7 @@ else:
             module = "Cost - Export"
         else:
             module = "Home"
-
-    if st.sidebar.button("Logout"):
-        st.session_state.clear()
-        st.rerun()
+        st.session_state["module"] = module
 
     try:
         if module == "Cost Sheet":
