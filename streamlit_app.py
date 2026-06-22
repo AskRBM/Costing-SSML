@@ -45,10 +45,10 @@ st.markdown(
 div[data-testid="stVerticalBlock"] {gap:0.18rem;}
 hr {margin:0.15rem 0;}
 /* Top desktop-style header */
-.rbm-topbar{background:#0b4f73;color:#fff;display:grid;grid-template-columns:145px 260px 1fr 260px;align-items:center;gap:8px;padding:4px 10px;border-radius:5px 5px 0 0;min-height:48px;}
+.rbm-topbar{background:#0b4f73;color:#fff;display:grid;grid-template-columns:150px 330px 1fr 360px;align-items:center;gap:8px;padding:5px 10px;border-radius:5px 5px 0 0;min-height:52px;}
 .rbm-logo{font-size:28px;font-weight:900;line-height:25px;letter-spacing:.5px;}
 .rbm-sub{font-size:9px;font-weight:700;line-height:11px;}
-.rbm-title{background:#128b77;color:#fff;padding:8px 18px;font-size:22px;font-weight:900;text-align:center;border-bottom:4px solid #c8f5e8;white-space:nowrap;}
+.rbm-title{background:#128b77;color:#fff;padding:8px 16px;font-size:20px;font-weight:900;text-align:center;border-bottom:4px solid #c8f5e8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .rbm-nav{display:flex;gap:6px;justify-content:center;align-items:center;flex-wrap:nowrap;}
 .rbm-nav a{background:#fff;color:#09294a;text-decoration:none;border:1px solid #b8c5d8;border-radius:4px;padding:8px 15px;font-size:14px;font-weight:700;box-shadow:0 1px 2px rgba(0,0,0,.16);white-space:nowrap;}
 .rbm-nav a.active{background:#0d6edb;color:#fff;border-color:#0d6edb;}
@@ -284,10 +284,6 @@ def require_login():
 
 def set_module(module_name: str):
     st.session_state["module"] = module_name
-    try:
-        st.query_params["module"] = module_name
-    except Exception:
-        pass
 
 
 def header(title: str):
@@ -296,11 +292,11 @@ def header(title: str):
     role = st.session_state.get("role", "")
     active = st.session_state.get("module", "Cost Sheet")
 
-    # Title fixed as Costing as requested. Current module is shown through active button.
+    display_title = "Professional Cost Sheet Report" if active == "Cost Sheet" else "Costing"
     st.markdown(f"""
 <div class='rbm-topbar'>
   <div><div class='rbm-logo'>RBM AI</div><div class='rbm-sub'>Robotic Business Management</div></div>
-  <div class='rbm-title'>Costing</div>
+  <div class='rbm-title'>{display_title}</div>
   <div></div>
   <div class='rbm-actions'>
     <a class='sync'>☁ Sync Now</a>
@@ -330,10 +326,6 @@ def header(title: str):
         with cols[i]:
             if st.button(label, key=f"nav_{module}", type=("primary" if active == module else "secondary")):
                 st.session_state["module"] = module
-                try:
-                    st.query_params["module"] = module
-                except Exception:
-                    pass
                 st.rerun()
     with cols[-1]:
         if st.button("Logout", key="nav_logout"):
@@ -405,48 +397,67 @@ def report_metrics(calc: Dict[str, Any]):
 
 
 def detailed_cost_rows(row: Dict[str, Any], what_if: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Desktop-style textile costing rows. Uses DB columns if available, otherwise safe defaults."""
+    """Excel-style textile costing calculation.
+    Formula is kept close to the desktop sheet:
+    dyed yarn = cotton yarn + cotton wastage + dyeing
+    cotton dyed proportion = dyed yarn * cotton composition %
+    raw material = cotton dyed proportion + polyester + spandex + kora
+    costing = raw material + knitting + wastage after knitting
+    selling = costing + margin - discount.
+    """
     what_if = what_if or {}
-    local_cost = clean_num(row.get("local_cost"), 0)
-    sales_price = clean_num(row.get("sales_price"), local_cost)
-    cotton = clean_num(row.get("cotton_yarn_cost", row.get("cotton_cost", 225 if local_cost else 0)), 0)
-    waste_pct = clean_num(what_if.get("wastage_pct", row.get("wastage_pct", 6.75)), 6.75)
+    cotton = clean_num(row.get("cotton_yarn_cost", row.get("cotton_cost", row.get("cotton_yarn", 225))), 225)
+    waste_pct = clean_num(what_if.get("wastage_pct", row.get("wastage_pct", 3.0)), 3.0)
     dyeing = clean_num(what_if.get("dyeing_cost", row.get("dyeing_cost", row.get("dying_cost", 110))), 110)
-    dyed_yarn = clean_num(row.get("dyed_yarn_cost"), cotton + (cotton * waste_pct / 100) + dyeing)
+
+    # composition percentage defaults follow existing textile sheet style: Cotton 96 + Spandex 4
+    cotton_pct = clean_num(row.get("cotton_pct", row.get("cotton", 96)), 96)
+    polyester_pct = clean_num(row.get("poly_pct", row.get("poly", 0)), 0)
+    tencel_pct = clean_num(row.get("tencel_pct", row.get("tencel", 0)), 0)
+    spandex_pct = clean_num(row.get("spandex_pct", row.get("spandex", 4)), 4)
+
+    dyed_yarn = cotton + (cotton * waste_pct / 100) + dyeing
+    cotton_prop = dyed_yarn * cotton_pct / 100
     polyester = clean_num(row.get("polyester_cost"), 0)
-    spandex = clean_num(row.get("spandex_cost"), 13.40 if cotton else 0)
+    tencel = clean_num(row.get("tencel_cost"), 0)
+    # If spandex cost not stored, use desktop default value for 4% spandex.
+    spandex_cost = clean_num(row.get("spandex_cost"), 13.40 if spandex_pct else 0)
     kora = clean_num(row.get("kora_yarn_cost"), 0)
-    cotton_prop = clean_num(row.get("cotton_dyed_proportion_cost"), max(0, local_cost - polyester - spandex - kora) if local_cost else dyed_yarn)
-    raw_material = clean_num(row.get("raw_material_cost"), cotton_prop + polyester + spandex + kora)
+    raw_material = cotton_prop + polyester + tencel + spandex_cost + kora
+
     knit = clean_num(what_if.get("knit", row.get("knitting_processing_cost", 90)), 90)
     knit_waste_pct = clean_num(what_if.get("knit_waste_pct", row.get("knit_waste_pct", 10)), 10)
-    waste_after_cost = clean_num(row.get("wastage_after_knitting_cost"), (raw_material + knit) * knit_waste_pct / 100)
-    costing = clean_num(row.get("costing"), raw_material + knit + waste_after_cost)
+    waste_after_cost = (raw_material + knit) * knit_waste_pct / 100
+    costing = raw_material + knit + waste_after_cost
     margin_pct = clean_num(what_if.get("margin", row.get("margin_pct", 10)), 10)
-    margin_value = clean_num(row.get("margin_value"), costing * margin_pct / 100)
-    selling = clean_num(row.get("sales_price"), costing + margin_value)
+    margin_value = costing * margin_pct / 100
+    discount_pct = clean_num(what_if.get("discount", 0), 0)
+    selling_before_discount = costing + margin_value
+    selling = max(0, selling_before_discount - (selling_before_discount * discount_pct / 100))
     return {
         "cotton": cotton, "waste_pct": waste_pct, "dyeing": dyeing, "dyed_yarn": dyed_yarn,
-        "cotton_prop": cotton_prop, "polyester": polyester, "spandex": spandex, "kora": kora,
-        "raw_material": raw_material, "knit": knit, "knit_waste_pct": knit_waste_pct,
-        "waste_after_cost": waste_after_cost, "costing": costing, "margin_value": margin_value,
-        "selling": selling, "margin_pct": margin_pct,
+        "cotton_prop": cotton_prop, "polyester": polyester, "tencel": tencel,
+        "spandex": spandex_cost, "kora": kora, "raw_material": raw_material,
+        "knit": knit, "knit_waste_pct": knit_waste_pct,
+        "waste_after_cost": waste_after_cost, "costing": costing,
+        "margin_value": margin_value, "selling": selling, "margin_pct": margin_pct,
+        "cotton_pct": cotton_pct, "polyester_pct": polyester_pct, "tencel_pct": tencel_pct,
+        "spandex_pct": spandex_pct, "discount_pct": discount_pct,
     }
-
 
 def fmt2(v: Any) -> str:
     return fmt(v, 2)
 
 
 def cost_sheet_page():
-    header("Professional Cost Sheet Report - Sort No Wise Textile Costing")
+    header("Professional Cost Sheet Report")
     rows = list_sort_numbers()
     default_sort = st.session_state.get("last_sort", first_sort())
-    st.markdown("<div class='section-head'>Professional Cost Sheet Report - Sort No Wise Textile Costing</div>", unsafe_allow_html=True)
-    # Control strip like desktop: Sort, Refresh, Print, Export in same row.
-    c0, c1, c2, c3, c4, c5 = st.columns([1.3, 2.4, .8, 1.1, 1.3, 4.0])
+
+    # Desktop-like control strip directly below top header.
+    c0, c1, c2, c3, c4, c5 = st.columns([1.25, 2.15, .85, 1.15, 1.25, 4.2])
     with c0:
-        st.markdown("<div style='font-weight:900;padding-top:8px'>Sort No (Excel D1):</div>", unsafe_allow_html=True)
+        st.markdown("<div style='font-weight:900;padding-top:7px'>Sort No (Excel D1):</div>", unsafe_allow_html=True)
     with c1:
         idx = rows.index(default_sort) if default_sort in rows else 0
         selected = st.selectbox("Sort No", options=rows if rows else [default_sort], index=idx if rows else 0, label_visibility="collapsed", key="cost_sort_select")
@@ -459,44 +470,70 @@ def cost_sheet_page():
         st.button("Export This Sort", key="export_sort")
     with c5:
         st.markdown("<div class='fast-mode'>Fast mode: Cost sheet loads selected sort only</div>", unsafe_allow_html=True)
+
     sort_no = selected
     st.session_state["last_sort"] = sort_no
     row = get_sort(sort_no) if sort_no else None
     if not row:
         st.error("No details found for selected Sort No.")
         return
-    with st.container():
-        st.markdown("<div class='report'>", unsafe_allow_html=True)
-        calc = compute_cost(row)
-        report_metrics(calc)
-        base = detailed_cost_rows(row)
-        st.markdown("<div class='whatbox'><div class='what-title'>What-If Analysis</div>", unsafe_allow_html=True)
-        w1,w2,w3,w4,w5,w6,w7,w8,w9 = st.columns([1,1,1,1,1,1,1,1,1])
-        with w1: waste_pct = st.number_input("Waste %", value=float(base['waste_pct']), step=0.25, key="wi_waste")
-        with w2: dyeing = st.number_input("Dyeing Cost Rs.", value=float(base['dyeing']), step=1.0, key="wi_dye")
-        with w3: knit_waste_pct = st.number_input("Knit Waste %", value=float(base['knit_waste_pct']), step=0.25, key="wi_kwaste")
-        with w4: discount = st.number_input("Discount %", value=0.0, step=1.0, key="wi_disc")
-        with w5: currency_rate = st.number_input("Currency Rate", value=clean_num(row.get("currency_rate"),87), step=1.0, key="wi_curr")
-        with w6: freight = st.number_input("Freight INR/KG", value=15.0, step=1.0, key="wi_freight")
-        with w7: commission = st.number_input("Commission %", value=5.0, step=1.0, key="wi_comm")
-        with w8: lc_days = st.number_input("LC Days / Interest", value=0.0, step=1.0, key="wi_lc")
-        with w9: margin_pct = st.number_input("Margin %", value=float(base['margin_pct']), step=1.0, key="wi_margin")
-        cc1,cc2,cc3,cc4 = st.columns([1.4,1,1.2,7])
-        with cc1:
-            country = st.selectbox("Country", ["Bangladesh", "Vietnam", "Sri Lanka", "Japan", "Colombia", "Nagpur", "Istanbul"], key="wi_country")
-        with cc2:
-            st.button("Apply", type="primary", key="wi_apply")
-        with cc3:
-            st.button("Freight Master", key="freight_master")
-        st.markdown("</div>", unsafe_allow_html=True)
-        d = detailed_cost_rows(row, {"wastage_pct": waste_pct, "dyeing_cost": dyeing, "knit_waste_pct": knit_waste_pct, "margin": margin_pct, "knit": base['knit']})
-        discounted_selling = max(0, d['selling'] - (d['selling'] * discount / 100))
-        price_usd_kg = discounted_selling / currency_rate if currency_rate else 0
-        total_inr = discounted_selling + freight + (discounted_selling * commission / 100)
-        total_usd = total_inr / currency_rate if currency_rate else 0
-        left, right = st.columns(2)
-        with left:
-            st.markdown("""
+
+    base = detailed_cost_rows(row)
+    currency_default = clean_num(row.get("currency_rate"), 87)
+    calc = {
+        "sort_no": row.get("sort_no"),
+        "structure": row.get("structure"),
+        "finish_gsm": fmt(row.get("finish_gsm"), 0),
+        "finish_width": fmt(row.get("finish_width"), 0),
+        "sales_price": fmt(base["selling"]),
+        "usd_kg": fmt(base["selling"] / currency_default if currency_default else 0),
+    }
+
+    st.markdown("<div class='report'>", unsafe_allow_html=True)
+    report_metrics(calc)
+    st.markdown("<div class='whatbox'><div class='what-title'>What-If Analysis</div>", unsafe_allow_html=True)
+
+    w1,w2,w3,w4,w5,w6,w7,w8,w9 = st.columns([1,1,1,1,1,1,1,1,1])
+    with w1: waste_pct = st.number_input("Waste %", value=float(base['waste_pct']), step=0.25, key="wi_waste", format="%.2f")
+    with w2: dyeing = st.number_input("Dyeing Cost Rs.", value=float(base['dyeing']), step=1.0, key="wi_dye", format="%.2f")
+    with w3: knit_waste_pct = st.number_input("Knit Waste %", value=float(base['knit_waste_pct']), step=0.25, key="wi_kwaste", format="%.2f")
+    with w4: discount = st.number_input("Discount %", value=0.0, step=1.0, key="wi_disc", format="%.2f")
+    with w5: currency_rate = st.number_input("Currency Rate", value=float(currency_default), step=1.0, key="wi_curr", format="%.2f")
+    with w6: freight = st.number_input("Freight INR/KG", value=15.0, step=1.0, key="wi_freight", format="%.2f")
+    with w7: commission = st.number_input("Commission %", value=5.0, step=1.0, key="wi_comm", format="%.2f")
+    with w8: lc_days = st.number_input("LC Days / Interest", value=0.0, step=1.0, key="wi_lc", format="%.2f")
+    with w9: margin_pct = st.number_input("Margin %", value=float(base['margin_pct']), step=1.0, key="wi_margin", format="%.2f")
+
+    cc1,cc2,cc3,cc4 = st.columns([1.4,1,1.2,7])
+    with cc1:
+        country = st.selectbox("Country", ["Bangladesh", "Vietnam", "Sri Lanka", "Japan", "Colombia", "Nagpur", "Istanbul"], key="wi_country")
+    with cc2:
+        st.button("Apply", type="primary", key="wi_apply")
+    with cc3:
+        st.button("Freight Master", key="freight_master")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    d = detailed_cost_rows(row, {
+        "wastage_pct": waste_pct, "dyeing_cost": dyeing,
+        "knit_waste_pct": knit_waste_pct, "margin": margin_pct,
+        "knit": base['knit'], "discount": discount,
+    })
+    selling = d['selling']
+    price_usd_kg = selling / currency_rate if currency_rate else 0
+    commission_amt = selling * commission / 100
+    lc_interest = clean_num(lc_days, 0)
+    total_inr = selling + freight + commission_amt + lc_interest
+    total_usd = total_inr / currency_rate if currency_rate else 0
+
+    # Refresh metric cards after what-if values.
+    calc2 = dict(calc)
+    calc2["sales_price"] = fmt(selling)
+    calc2["usd_kg"] = fmt(price_usd_kg)
+    # show cards again is avoided to keep compact; values above use base, tables use applied what-if.
+
+    left, right = st.columns(2)
+    with left:
+        st.markdown("""
 <div class='table-box'><table><tr><th colspan='2'>▮ Cost Build-up</th></tr>
 """ + f"""
 <tr><td>Cotton Yarn Costing</td><td>{fmt2(d['cotton'])}</td></tr>
@@ -513,33 +550,33 @@ def cost_sheet_page():
 <tr><td>Wastage After Knitting Cost</td><td>{fmt2(d['waste_after_cost'])}</td></tr>
 <tr class='yellow-row'><td>Costing</td><td>{fmt2(d['costing'])}</td></tr>
 <tr class='green-row'><td>Margin</td><td>{fmt2(d['margin_value'])}</td></tr>
-<tr class='yellow-row'><td>Selling Price</td><td>{fmt2(discounted_selling)}</td></tr>
+<tr class='yellow-row'><td>Selling Price</td><td>{fmt2(selling)}</td></tr>
 </table></div>
 """, unsafe_allow_html=True)
-        with right:
-            st.markdown("""
+    with right:
+        st.markdown("""
 <div class='table-box'><table><tr><th colspan='2'>▣ Export / Price Calculation</th></tr>
 """ + f"""
 <tr class='green-row'><td>Currency Rate</td><td>{fmt2(currency_rate)}</td></tr>
 <tr class='red-row'><td>Discount If Any</td><td>{fmt2(discount)}</td></tr>
 <tr class='yellow-row'><td>Price USD/KG</td><td>{fmt2(price_usd_kg)}</td></tr>
-<tr><td>Price USD/Mtrs</td><td>{calc['usd_mtrs']}</td></tr>
-<tr><td>Price USD/Yds</td><td>{calc['usd_yds']}</td></tr>
+<tr><td>Price USD/Mtrs</td><td>{fmt2(price_usd_kg / max(clean_num(row.get('linear_mtrs_kg', 1.70), 1.70), 0.0001))}</td></tr>
+<tr><td>Price USD/Yds</td><td>{fmt2(price_usd_kg / max(clean_num(row.get('linear_yds_kg', 1.85), 1.85), 0.0001))}</td></tr>
 <tr><td>Linear Mtrs/Kg</td><td>{fmt2(row.get('linear_mtrs_kg', 1.70))}</td></tr>
 <tr><td>Linear Yds/Kg</td><td>{fmt2(row.get('linear_yds_kg', 1.85))}</td></tr>
 <tr><td>Width CMS</td><td>{calc['finish_width']}</td></tr>
 <tr><td>Width Inch</td><td>{fmt2(clean_num(row.get('finish_width'))/2.54 if clean_num(row.get('finish_width')) else 0)}</td></tr>
 <tr><td>Weight GSM</td><td>{calc['finish_gsm']}</td></tr>
-<tr><td>Price Per KG INR</td><td>{fmt2(discounted_selling)}</td></tr>
+<tr><td>Price Per KG INR</td><td>{fmt2(selling)}</td></tr>
 <tr class='green-row'><td>Freight INR/KG</td><td>{fmt2(freight)}</td></tr>
 <tr class='green-row'><td>Commission %</td><td>{fmt2(commission)}</td></tr>
-<tr><td>Commission Amount</td><td>{fmt2(discounted_selling * commission / 100)}</td></tr>
-<tr class='green-row'><td>LC Days / Interest</td><td>{fmt2(lc_days)}</td></tr>
+<tr><td>Commission Amount</td><td>{fmt2(commission_amt)}</td></tr>
+<tr class='green-row'><td>LC Days / Interest</td><td>{fmt2(lc_interest)}</td></tr>
 <tr class='yellow-row'><td>Total Cost INR/KG</td><td>{fmt2(total_inr)}</td></tr>
 <tr class='yellow-row'><td>Total Cost USD/KG</td><td>{fmt2(total_usd)}</td></tr>
 </table></div>
 """, unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 def vertical_report(title: str, items: List[tuple]):
     header(title)
@@ -770,10 +807,7 @@ if str(st.query_params.get("logout", "")) == "1":
 if not st.session_state.get("username"):
     login_page()
 else:
-    qp_module = st.query_params.get("module", "")
-    module = qp_module or st.session_state.get("module", "")
-    if qp_module:
-        st.session_state["module"] = qp_module
+    module = st.session_state.get("module", "")
     if not module:
         module = first_allowed_module()
         st.session_state["module"] = module
