@@ -39,13 +39,16 @@ st.markdown(
     """
 <style>
 [data-testid="stAppViewContainer"] {background:#eaf6fb;}
+input, textarea {color:#0b1f35 !important; background:#ffffff !important;}
+[data-baseweb="input"] {background:#ffffff !important;}
+div[data-testid="stTextInput"] input:disabled, div[data-testid="stNumberInput"] input:disabled {color:#111827 !important; opacity:1 !important;}
 .block-container {padding:0.15rem 0.35rem 0.25rem 0.35rem; max-width:100%;}
 [data-testid="stHeader"] {height:0rem; background:transparent;}
 [data-testid="stToolbar"], #MainMenu, footer {display:none !important; visibility:hidden;}
 div[data-testid="stVerticalBlock"] {gap:0.18rem;}
 hr {margin:0.15rem 0;}
 /* Top desktop-style header */
-.rbm-topbar{background:#0b4f73;color:#fff;display:grid;grid-template-columns:150px 330px 1fr 360px;align-items:center;gap:8px;padding:5px 10px;border-radius:5px 5px 0 0;min-height:52px;}
+.rbm-topbar{background:#0b4f73;color:#fff;display:grid;grid-template-columns:150px 265px 1fr 355px;align-items:center;gap:8px;padding:4px 10px;border-radius:5px 5px 0 0;min-height:48px;}
 .rbm-logo{font-size:28px;font-weight:900;line-height:25px;letter-spacing:.5px;}
 .rbm-sub{font-size:9px;font-weight:700;line-height:11px;}
 .rbm-title{background:#128b77;color:#fff;padding:8px 16px;font-size:20px;font-weight:900;text-align:center;border-bottom:4px solid #c8f5e8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -292,7 +295,7 @@ def header(title: str):
     role = st.session_state.get("role", "")
     active = st.session_state.get("module", "Cost Sheet")
 
-    display_title = "Professional Cost Sheet Report" if active == "Cost Sheet" else "Costing"
+    display_title = "Costing"
     st.markdown(f"""
 <div class='rbm-topbar'>
   <div><div class='rbm-logo'>RBM AI</div><div class='rbm-sub'>Robotic Business Management</div></div>
@@ -348,9 +351,9 @@ def login_page():
     c1, c2, c3 = st.columns([1, 1.1, 1])
     with c2:
         st.markdown("### Secure Client Login")
-        with st.form("login_form"):
-            username = st.text_input("Username", value="admin")
-            password = st.text_input("Password", type="password")
+        with st.form("login_form", clear_on_submit=False):
+            username = st.text_input("Username", value=st.session_state.get("login_username", "admin"), key="login_username_input", placeholder="Enter username")
+            password = st.text_input("Password", value="", type="password", key="login_password_input", placeholder="Enter password")
             submitted = st.form_submit_button("Login", type="primary")
         if submitted:
             try:
@@ -485,8 +488,8 @@ def cost_sheet_page():
         "structure": row.get("structure"),
         "finish_gsm": fmt(row.get("finish_gsm"), 0),
         "finish_width": fmt(row.get("finish_width"), 0),
-        "sales_price": fmt(base["selling"]),
-        "usd_kg": fmt(base["selling"] / currency_default if currency_default else 0),
+        "sales_price": fmt(clean_num(row.get("sales_price"), base["selling"])),
+        "usd_kg": fmt(clean_num(row.get("usd_kg"), clean_num(row.get("sales_price"), base["selling"]) / currency_default if currency_default else 0)),
     }
 
     st.markdown("<div class='report'>", unsafe_allow_html=True)
@@ -518,12 +521,27 @@ def cost_sheet_page():
         "knit_waste_pct": knit_waste_pct, "margin": margin_pct,
         "knit": base['knit'], "discount": discount,
     })
+    # Important: for normal viewing use already stored/desktop calculated values from Supabase.
+    # This keeps Streamlit output equal to the desktop/SPECS uploaded calculation.
+    defaults_unchanged = (
+        abs(waste_pct - float(base['waste_pct'])) < 1e-9 and
+        abs(dyeing - float(base['dyeing'])) < 1e-9 and
+        abs(knit_waste_pct - float(base['knit_waste_pct'])) < 1e-9 and
+        abs(margin_pct - float(base['margin_pct'])) < 1e-9 and
+        abs(discount) < 1e-9
+    )
+    saved_local = clean_num(row.get("local_cost"), d['costing'])
+    saved_sales = clean_num(row.get("sales_price"), d['selling'])
+    if defaults_unchanged:
+        d['costing'] = saved_local
+        d['selling'] = saved_sales
+        d['margin_value'] = max(0, saved_sales - saved_local)
     selling = d['selling']
-    price_usd_kg = selling / currency_rate if currency_rate else 0
+    price_usd_kg = clean_num(row.get("usd_kg"), selling / currency_rate if currency_rate else 0) if defaults_unchanged else (selling / currency_rate if currency_rate else 0)
     commission_amt = selling * commission / 100
     lc_interest = clean_num(lc_days, 0)
-    total_inr = selling + freight + commission_amt + lc_interest
-    total_usd = total_inr / currency_rate if currency_rate else 0
+    total_inr = clean_num(row.get("total_cost_inr_kg", row.get("total_cost_inr")), selling + freight + commission_amt + lc_interest) if defaults_unchanged else (selling + freight + commission_amt + lc_interest)
+    total_usd = clean_num(row.get("total_cost_usd_kg", row.get("total_cost_usd")), total_inr / currency_rate if currency_rate else 0) if defaults_unchanged else (total_inr / currency_rate if currency_rate else 0)
 
     # Refresh metric cards after what-if values.
     calc2 = dict(calc)
@@ -637,7 +655,7 @@ def sort_form_page(mode="Add"):
         with c7:
             st.write("")
             st.write("")
-            submitted = st.form_submit_button("Submit / Save Sort", type="primary")
+            submitted = st.form_submit_button("Submit", type="primary")
     st.markdown("</div>", unsafe_allow_html=True)
 
     if submitted:
@@ -712,7 +730,7 @@ def users_page():
         c1, c2, c3 = st.columns(3)
         with c1: username = st.text_input("Username")
         with c2: password = st.text_input("Password", help="blank = keep old password for existing user")
-        with c3: role = st.selectbox("Role", ["Admin", "User"])
+        with c3: role = st.selectbox("Role", ["Admin", "User"], help="Developer role is hidden from client Admin/User creation.")
         cols = st.columns(6)
         perm_values = {}
         for i, (k, label) in enumerate(PERMISSIONS):
