@@ -1,0 +1,2 @@
+username,password,role,can_cost_sheet,can_cost_local,can_cost_export,can_add_sort,can_edit_sort,can_delete_sort,can_rm_price,can_users
+admin,rbm123,Developer,True,True,True,True,True,True,True,True
