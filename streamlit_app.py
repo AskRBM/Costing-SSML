@@ -1,645 +1,495 @@
-import os
-import hashlib
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from __future__ import annotations
 
-import requests
+import html
+from pathlib import Path
+from datetime import datetime
+from typing import Any, Dict, List
+
+import pandas as pd
 import streamlit as st
 
-# -----------------------------
-# RBM TEXTILE COSTING - STREAMLIT CLOUD VERSION
-# -----------------------------
-st.set_page_config(
-    page_title="RBM Textile Costing",
-    page_icon="🧵",
-    layout="wide",
-    initial_sidebar_state="collapsed",
-)
+st.set_page_config(page_title="RBM Textile Costing", page_icon="🧵", layout="wide", initial_sidebar_state="collapsed")
 
-TABLE_SORT = "sort_master"
-TABLE_RM = "rm_price_master"
-TABLE_USERS = "users"
-TABLE_AUDIT = "audit_log"
+BASE_DIR = Path(__file__).resolve().parent
+DATA_DIR = BASE_DIR / "data"
+GROUP_CSV = DATA_DIR / "group_costing.csv"
+RM_CSV = DATA_DIR / "rm_price_master.csv"
+USERS_CSV = DATA_DIR / "users_default.csv"
 
-PERMISSIONS = [
-    ("can_cost_sheet", "Cost Sheet"),
-    ("can_cost_local", "Cost - Local"),
-    ("can_cost_export", "Cost - Export"),
-    ("can_add_sort", "Add Sort"),
-    ("can_edit_sort", "Edit Sort"),
-    ("can_delete_sort", "Delete Sort"),
-]
+MODULES = ["Cost Sheet", "Cost - Local", "Cost - Export", "Add Sort", "RM Price", "Users"]
+PERM = {
+    "Cost Sheet":"can_cost_sheet",
+    "Cost - Local":"can_cost_local",
+    "Cost - Export":"can_cost_export",
+    "Add Sort":"can_add_sort",
+    "RM Price":"can_rm_price",
+    "Users":"can_users",
+}
 
-DEFAULT_SUPABASE_URL = "https://mmzvwlitakluttlnnioh.supabase.co"
-
-# -----------------------------
-# CSS - compact professional layout
-# -----------------------------
-st.markdown(
-    """
+st.markdown("""
 <style>
-[data-testid="stAppViewContainer"] {background:#eaf6fb;}
-.block-container {padding-top:0.05rem; padding-left:0.45rem; padding-right:0.45rem; max-width:100%;}
-[data-testid="stHeader"] {height:0rem; background:transparent;}
-[data-testid="stToolbar"] {display:none;}
-#MainMenu, footer {visibility:hidden;}
-div[data-testid="stVerticalBlock"] {gap:0.35rem;}
-.rbm-top {background:#0b4f73; color:white; padding:5px 10px; border-radius:7px 7px 0 0; display:flex; gap:12px; align-items:center; flex-wrap:wrap;}
-.rbm-logo {font-size:28px; font-weight:900; line-height:24px;}
-.rbm-sub {font-size:10px; font-weight:700;}
-.rbm-title {background:#138b75; color:white; padding:7px 18px; font-size:22px; font-weight:900; min-width:250px; text-align:center;}
-.rbm-user {margin-left:auto; font-size:13px; font-weight:700; text-align:right;}
-.nav-wrap {background:#0b4f73; padding:0 8px 6px 8px; border-radius:0 0 7px 7px; margin-bottom:5px;}
-.section-head {background:#138b75; color:white; font-size:23px; font-weight:900; padding:6px 10px; margin:0 0 6px 0;}
-.report {background:white; border:1px solid #d3d3d3; padding:8px; border-radius:8px; box-shadow:0 2px 9px rgba(0,0,0,.12);}
-.report-head {background:#0b4f73; color:white; padding:9px 14px; font-size:23px; font-weight:900; display:flex; justify-content:space-between; align-items:center;}
-.metric-row {display:grid; grid-template-columns:repeat(5,1fr); gap:6px; margin:7px 0;}
-.metric {color:white; padding:7px 10px; border-radius:3px; min-height:43px;}
-.metric small{font-weight:800; display:block; font-size:11px;}
-.metric b{font-size:19px; display:block;}
-.bg-teal{background:#138b75}.bg-blue{background:#405ad9}.bg-gold{background:#9c6a00}.bg-green{background:#10a848}.bg-red{background:#b52e34}.bg-navy{background:#0b4f73}
-.table-box table {width:100%; border-collapse:collapse; font-size:14px;}
-.table-box th {background:#0b4f73; color:#fff; padding:8px; border:1px solid #111; text-align:left;}
-.table-box td {padding:7px; border:1px solid #111; background:#f7fbff;}
-.table-box tr:nth-child(even) td {background:#eaf2fb;}
-.green-row td {background:#86ee9c !important; font-weight:700;}
-.red-row td:first-child {background:#ff4c4c !important; color:#fff; font-weight:800;}
-.red-row td:last-child {background:#ffc5c5 !important;}
-.yellow-row td {background:#fff4bd !important; font-weight:700;}
-.vertical-table th {width:35%;}
-.compact-card {background:#e2ded8; padding:6px 8px; border-radius:7px; margin-bottom:6px;}
-.stButton > button {font-weight:800; border-radius:7px; padding:0.35rem 0.8rem; min-height:34px;}
-.stTextInput > div > div > input, .stNumberInput input, .stSelectbox div[data-baseweb="select"] > div {min-height:32px;}
-label[data-testid="stWidgetLabel"] p {font-weight:700; font-size:13px; margin-bottom:0px;}
-@media(max-width:800px){.metric-row{grid-template-columns:1fr 1fr}.rbm-user{margin-left:0}.rbm-title{min-width:100%;}.report-head{font-size:18px}.rbm-logo{font-size:25px}}
+:root{--blue:#0b4f73;--green:#0f8d75;--red:#e52525;--bg:#eaf6fb;--line:#222;}
+[data-testid="stAppViewContainer"]{background:var(--bg);} 
+.block-container{padding:0.15rem 0.35rem 0.25rem 0.35rem; max-width:100%;}
+[data-testid="stHeader"], [data-testid="stToolbar"]{display:none!important; height:0!important;}
+#MainMenu, footer{visibility:hidden;} div[data-testid="stVerticalBlock"]{gap:0.22rem;}
+.rbm-top{background:#0b4f73;color:#fff;height:86px;display:flex;align-items:center;gap:10px;padding:0 10px;border-bottom:3px solid #d6eef8;overflow:hidden;}
+.logo{width:145px;min-width:145px}.logo .big{font-size:29px;font-weight:900;line-height:28px}.logo .sub{font-size:9px;font-weight:800;}
+.titlebox{background:#108d76;height:56px;width:260px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;border-bottom:4px solid #d3f5ee;}
+.nav{display:flex;gap:6px;align-items:center;flex-wrap:nowrap;flex:1;justify-content:center;}
+a.navbtn{text-decoration:none;background:#fff;color:#001b34;border:1px solid #b8cee8;border-radius:5px;padding:9px 15px;font-size:14px;font-weight:800;white-space:nowrap;box-shadow:0 1px 2px rgba(0,0,0,.15)}
+a.navbtn.active{background:#166fe5;color:white;border-color:#166fe5;}
+.top-actions{display:flex;gap:7px;align-items:center;white-space:nowrap;}
+.top-actions span,.logout{font-size:12px;font-weight:800}.sync,.on,.logout{border-radius:4px;padding:9px 12px;color:#fff;font-weight:900}.sync{background:#0ab052}.on{background:#087e20}.logout{background:#d81919;text-decoration:none}
+.userbox{text-align:right;font-size:12px;font-weight:900;min-width:150px;}
+.control-strip{background:#dedbd5;padding:5px 10px;display:flex;align-items:center;gap:8px;white-space:nowrap;}
+.fast{margin-left:18px;color:#008000;font-weight:900;font-size:12px}.label{font-weight:900}.small-note{font-size:11px;color:#095;}
+.card-row{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:2px 0 0 0}.kpi{height:27px;color:white;font-weight:900;display:flex;align-items:center;padding:0 9px;font-size:12px;}
+.kpi b{margin-right:14px}.k1{background:#0f8d75}.k2{background:#3159d8}.k3{background:#9a6500}.k4{background:#09a441}.k5{background:#b82e35}
+.sheet-head{background:#0b4f73;color:#fff;height:37px;display:flex;align-items:center;padding:0 10px;font-size:17px;font-weight:900;margin-top:3px}.sheet-head .sort{margin-left:auto;color:#fff200;font-size:18px;}
+.whatif{border:1px solid #a7b7c6;background:#f7fbff;padding:4px 8px;margin:0 0 2px 0}.whatif-title{font-size:13px;font-weight:900;color:#01223a;margin-bottom:4px}
+.table-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:3px}.tblbox{border:1px solid #b2c1cf;background:white}.tbltitle{background:#0b4f73;color:#fff;font-weight:900;padding:5px 9px;font-size:13px}.rbmtable{width:100%;border-collapse:collapse;font-size:12px;font-weight:700}.rbmtable td{border:1px solid #333;padding:4px 7px}.rbmtable td:nth-child(2){font-weight:700}.row-green td{background:#91f0a0}.row-red td:first-child{background:#ff5555;color:white}.row-red td:nth-child(2){background:#ffc7c7}.row-yellow td{background:#fff3b5}.row-blue td{background:#eef6ff}.footer{position:fixed;bottom:0;left:0;right:0;background:#0b4f73;color:#fff;padding:8px 20px;font-size:13px;font-weight:800;display:flex;justify-content:space-between;z-index:10}.footer b{color:#ffe600}.content-pad{padding-bottom:28px}
+.stButton button{height:35px;padding:2px 13px;font-weight:800;border-radius:4px}.stSelectbox label,.stNumberInput label,.stTextInput label{font-weight:800;color:#001b34;font-size:12px!important}.stSelectbox div,.stTextInput input,.stNumberInput input{font-size:13px!important}.stNumberInput button{height:32px!important;min-height:32px!important}.login-card{max-width:470px;margin:25px auto;border:1px solid #b8cfe2;border-radius:8px;padding:18px;background:#f8fcff}.warn{background:#fde9ed;color:#9b1230;padding:10px;border-radius:6px;margin:10px 0}.ok{background:#e8fff0;color:#006a24;padding:10px;border-radius:6px;margin:10px 0}
+@media(max-width:850px){.rbm-top{height:auto;flex-wrap:wrap;padding:8px}.titlebox{width:100%;height:42px}.nav{justify-content:flex-start;overflow-x:auto}.card-row,.table-grid{grid-template-columns:1fr}.top-actions{flex-wrap:wrap}.footer{position:static}.control-strip{flex-wrap:wrap}}
 </style>
-""",
-    unsafe_allow_html=True,
-)
+""", unsafe_allow_html=True)
 
-# -----------------------------
-# Helpers
-# -----------------------------
-def get_secret(name: str, default: str = "") -> str:
+# ---------- data helpers ----------
+def norm_col(c:str)->str:
+    return str(c).strip().lower().replace("/", "_").replace(" ", "_").replace(".", "").replace("%", "pct").replace("-", "_").replace("__", "_")
+
+@st.cache_data(show_spinner=False)
+def read_csv(path_str: str) -> pd.DataFrame:
+    p=Path(path_str)
+    if not p.exists():
+        return pd.DataFrame()
+    df=pd.read_csv(p, dtype=str).fillna("")
+    df.columns=[norm_col(c) for c in df.columns]
+    return df
+
+def load_group() -> pd.DataFrame:
+    if "group_df" not in st.session_state:
+        st.session_state.group_df = read_csv(str(GROUP_CSV))
+    return st.session_state.group_df.copy()
+
+def save_group(df: pd.DataFrame):
+    st.session_state.group_df = df.copy()
+
+def load_rm() -> pd.DataFrame:
+    if "rm_df" not in st.session_state:
+        st.session_state.rm_df = read_csv(str(RM_CSV))
+    return st.session_state.rm_df.copy()
+
+def save_rm(df: pd.DataFrame):
+    st.session_state.rm_df = df.copy()
+
+def load_users() -> pd.DataFrame:
+    if "users_df" not in st.session_state:
+        df=read_csv(str(USERS_CSV))
+        if df.empty:
+            df=pd.DataFrame([{"username":"admin","password":"rbm123","role":"Developer","can_cost_sheet":"True","can_cost_local":"True","can_cost_export":"True","can_add_sort":"True","can_edit_sort":"True","can_delete_sort":"True","can_rm_price":"True","can_users":"True"}])
+        st.session_state.users_df=df
+    return st.session_state.users_df.copy()
+
+def save_users(df: pd.DataFrame):
+    st.session_state.users_df=df.copy()
+
+def to_float(x:Any, default:float=0.0)->float:
     try:
-        if name in st.secrets:
-            return str(st.secrets[name]).strip()
-    except Exception:
-        pass
-    return os.getenv(name, default).strip()
-
-SUPABASE_URL = get_secret("SUPABASE_URL", DEFAULT_SUPABASE_URL).rstrip("/")
-SUPABASE_SECRET_KEY = get_secret("SUPABASE_SECRET_KEY", "")
-
-
-def now_text() -> str:
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-
-def hash_password(password: str) -> str:
-    return hashlib.sha256((password or "").encode("utf-8")).hexdigest()
-
-
-def clean_num(v: Any, default: float = 0.0) -> float:
-    try:
-        if v is None or v == "" or str(v).strip() in ["-", "#VALUE!", "nan", "None"]:
-            return default
-        return float(str(v).replace(",", ""))
+        if x is None: return default
+        s=str(x).replace(",","").strip()
+        if s=="" or s.lower()=="nan" or s.lower()=="none": return default
+        return float(s)
     except Exception:
         return default
 
-
-def fmt(v: Any, decimals: int = 2) -> str:
-    n = clean_num(v, None)
-    if n is None:
-        return "-"
-    if abs(n - int(n)) < 0.0000001:
-        return str(int(n))
-    return f"{n:.{decimals}f}"
-
-
-def sb_headers() -> Dict[str, str]:
-    if not SUPABASE_SECRET_KEY:
-        st.error("SUPABASE_SECRET_KEY missing. Add it in Streamlit Secrets.")
-        st.stop()
-    return {
-        "apikey": SUPABASE_SECRET_KEY,
-        "Authorization": f"Bearer {SUPABASE_SECRET_KEY}",
-        "Content-Type": "application/json",
-        "Prefer": "return=representation",
-    }
-
-
-def sb_url(table: str) -> str:
-    return f"{SUPABASE_URL}/rest/v1/{table}"
-
-
-def sb_select(table: str, params: Optional[Dict[str, str]] = None) -> List[Dict[str, Any]]:
-    r = requests.get(sb_url(table), headers=sb_headers(), params=params or {}, timeout=25)
-    if r.status_code >= 300:
-        raise RuntimeError(f"Supabase select failed {table}: {r.status_code} {r.text}")
-    return r.json()
-
-
-def sb_insert(table: str, payload: Dict[str, Any]) -> List[Dict[str, Any]]:
-    r = requests.post(sb_url(table), headers=sb_headers(), json=payload, timeout=25)
-    if r.status_code >= 300:
-        raise RuntimeError(f"Supabase insert failed {table}: {r.status_code} {r.text}")
-    clear_cache()
-    return r.json() if r.text else []
-
-
-def sb_update(table: str, filters: Dict[str, str], payload: Dict[str, Any]) -> List[Dict[str, Any]]:
-    r = requests.patch(sb_url(table), headers=sb_headers(), params=filters, json=payload, timeout=25)
-    if r.status_code >= 300:
-        raise RuntimeError(f"Supabase update failed {table}: {r.status_code} {r.text}")
-    clear_cache()
-    return r.json() if r.text else []
-
-
-def sb_delete(table: str, filters: Dict[str, str]) -> None:
-    headers = sb_headers()
-    headers["Prefer"] = "return=minimal"
-    r = requests.delete(sb_url(table), headers=headers, params=filters, timeout=25)
-    if r.status_code >= 300:
-        raise RuntimeError(f"Supabase delete failed {table}: {r.status_code} {r.text}")
-    clear_cache()
-
-
-def clear_cache():
+def fmt(x:Any, dec:int=2)->str:
     try:
-        list_sort_numbers.clear()
-        get_sort.clear()
-        get_rm_rows.clear()
+        s=str(x).strip()
+        if s=="" or s.lower()=="nan" or s.lower()=="none": return ""
+        f=float(str(x).replace(",", ""))
+        if abs(f-round(f))<1e-9:
+            return str(int(round(f)))
+        return f"{f:.{dec}f}"
     except Exception:
-        pass
+        return str(x) if x is not None else ""
 
+def getv(row:Dict[str,Any], *names, default=""):
+    for n in names:
+        key=norm_col(n)
+        if key in row and str(row[key]).strip() not in ("", "nan", "None"):
+            return row[key]
+    return default
 
-@st.cache_data(ttl=180)
-def list_sort_numbers() -> List[str]:
-    rows = sb_select(TABLE_SORT, {"select": "sort_no", "order": "id.asc", "limit": "2000"})
-    return [str(r.get("sort_no")) for r in rows if r.get("sort_no") is not None]
+def group_sort_col(df:pd.DataFrame)->str:
+    for c in ["dev_sorts","sort_no","sort"]:
+        if c in df.columns: return c
+    return df.columns[1] if len(df.columns)>1 else "dev_sorts"
 
-
-@st.cache_data(ttl=180)
-def get_sort(sort_no: str) -> Optional[Dict[str, Any]]:
-    rows = sb_select(TABLE_SORT, {"sort_no": f"eq.{sort_no}", "select": "*", "limit": "1"})
-    return rows[0] if rows else None
-
-
-@st.cache_data(ttl=180)
-def get_rm_rows() -> List[Dict[str, Any]]:
-    return sb_select(TABLE_RM, {"select": "*", "order": "id.asc", "limit": "1000"})
-
-
-def first_sort() -> str:
-    rows = list_sort_numbers()
-    return rows[0] if rows else ""
-
-
-def compute_cost(row: Dict[str, Any], what_if: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    what_if = what_if or {}
-    currency_rate = clean_num(what_if.get("currency_rate", row.get("currency_rate", 87)), 87)
-    local_cost = clean_num(row.get("local_cost"), 0)
-    sales_price = clean_num(row.get("sales_price"), local_cost)
-    usd_kg = clean_num(row.get("usd_kg"), sales_price / currency_rate if currency_rate else 0)
-    usd_mtrs = clean_num(row.get("usd_mtrs"), 0)
-    usd_yds = clean_num(row.get("usd_yds"), 0)
-    total_inr = clean_num(row.get("total_cost_inr_kg", row.get("total_cost_inr", local_cost)), local_cost)
-    total_usd = clean_num(row.get("total_cost_usd_kg", row.get("total_cost_usd", usd_kg)), usd_kg)
-
-    discount = clean_num(what_if.get("discount"), 0)
-    margin = clean_num(what_if.get("margin"), 10)
-    freight = clean_num(what_if.get("freight"), 0)
-    commission = clean_num(what_if.get("commission"), 0)
-    knit = clean_num(what_if.get("knit"), 0)
-    wastage = clean_num(what_if.get("wastage"), 0)
-
-    adjusted_cost = max(0, local_cost + knit + freight + commission + wastage - discount)
-    adjusted_sales = adjusted_cost + (adjusted_cost * margin / 100)
-    adjusted_usd = adjusted_sales / currency_rate if currency_rate else 0
-
-    return {
-        "sort_no": row.get("sort_no"),
-        "structure": row.get("structure"),
-        "finish_gsm": fmt(row.get("finish_gsm"), 0),
-        "finish_width": fmt(row.get("finish_width"), 0),
-        "local_cost": fmt(local_cost),
-        "sales_price": fmt(sales_price),
-        "currency_rate": fmt(currency_rate),
-        "usd_kg": fmt(usd_kg),
-        "usd_mtrs": fmt(usd_mtrs),
-        "usd_yds": fmt(usd_yds),
-        "total_cost_inr_kg": fmt(total_inr),
-        "total_cost_usd_kg": fmt(total_usd),
-        "what_if_cost": fmt(adjusted_cost),
-        "what_if_sales": fmt(adjusted_sales),
-        "what_if_usd": fmt(adjusted_usd),
-    }
-
-
-def audit(action: str, old_value: str = "", new_value: str = "") -> None:
+def sort_options()->List[str]:
+    df=load_group()
+    if df.empty: return []
+    c=group_sort_col(df)
+    vals=[]
+    for v in df[c].astype(str).tolist():
+        v=v.strip()
+        if v and v not in vals: vals.append(v)
     try:
-        sb_insert(TABLE_AUDIT, {
-            "username": st.session_state.get("username", "system"),
-            "action": action,
-            "old_value": old_value,
-            "new_value": new_value,
-            "created_at": now_text(),
-        })
+        return sorted(vals, key=lambda x:(not x.isdigit(), int(x) if x.isdigit() else x))
     except Exception:
-        pass
+        return vals
 
+def get_sort_row(sort_no:str)->Dict[str,Any]:
+    df=load_group()
+    if df.empty: return {}
+    c=group_sort_col(df)
+    m=df[df[c].astype(str).str.strip()==str(sort_no).strip()]
+    if m.empty: return {}
+    return m.iloc[0].to_dict()
 
-def is_developer() -> bool:
-    return st.session_state.get("role") == "Developer"
+# ---------- role/session ----------
+def init_state():
+    st.session_state.setdefault("logged_in", False)
+    st.session_state.setdefault("username", "")
+    st.session_state.setdefault("role", "")
+    st.session_state.setdefault("module", "Cost Sheet")
+    st.session_state.setdefault("whatif", {})
 
+init_state()
 
-def has_perm(perm: str) -> bool:
-    if is_developer():
-        return True
-    return bool(st.session_state.get("perms", {}).get(perm))
+# Query module without losing login
+qp = st.query_params
+if "logout" in qp:
+    st.session_state.logged_in=False
+    st.session_state.username=""
+    st.session_state.role=""
+    try: st.query_params.clear()
+    except Exception: pass
+if "module" in qp and st.session_state.logged_in:
+    st.session_state.module = qp.get("module", "Cost Sheet")
 
+def current_user_row()->Dict[str,Any]:
+    df=load_users()
+    m=df[df["username"].astype(str).str.lower()==str(st.session_state.username).lower()]
+    return m.iloc[0].to_dict() if not m.empty else {}
 
-def require_login():
-    if not st.session_state.get("username"):
-        login_page()
-        st.stop()
+def has_perm(module:str)->bool:
+    if not st.session_state.logged_in: return False
+    role=str(st.session_state.role)
+    if role=="Developer": return True
+    if role=="Admin" and module in ["Cost Sheet","Cost - Local","Cost - Export","Add Sort","RM Price","Users"]: return True
+    r=current_user_row()
+    key=PERM.get(module, "")
+    return str(r.get(key,"False")).lower() in ("true","1","yes")
 
+# ---------- UI ----------
+def nav_url(m:str)->str:
+    return "?module=" + m.replace(" ", "%20")
 
-def set_module(module_name: str):
-    st.session_state["module"] = module_name
-    try:
-        st.query_params["module"] = module_name
-    except Exception:
-        pass
-
-
-def header(title: str):
-    username = st.session_state.get("username", "")
-    role = st.session_state.get("role", "")
+def header(title="Costing"):
+    role=html.escape(str(st.session_state.role or "")); user=html.escape(str(st.session_state.username or ""))
+    nav_html="".join([f'<a class="navbtn {"active" if st.session_state.module==m else ""}" href="{nav_url(m)}">{html.escape(m)}</a>' for m in MODULES if has_perm(m)])
     st.markdown(f"""
-<div class='rbm-top'>
-  <div><div class='rbm-logo'>RBM AI</div><div class='rbm-sub'>Robotic Business Management</div></div>
-  <div class='rbm-title'>{title}</div>
-  <div class='rbm-user'>{username} | {role}</div>
+<div class="rbm-top">
+  <div class="logo"><div class="big">RBM AI</div><div class="sub">Robotic Business Management</div></div>
+  <div class="titlebox">{html.escape(title)}</div>
+  <div class="nav">{nav_html}</div>
+  <div class="top-actions"><span class="sync">☁ Sync Now</span><span class="on">⦿ ON</span></div>
+  <div class="userbox">User: {user} | Role: {role}</div>
+  <a class="logout" href="?logout=1">↻ Logout</a>
 </div>
 """, unsafe_allow_html=True)
-
-    nav_items = []
-    if has_perm("can_cost_sheet"):
-        nav_items.append(("Cost Sheet", "Cost Sheet"))
-    if has_perm("can_cost_local"):
-        nav_items.append(("Cost - Local", "Cost - Local"))
-    if has_perm("can_cost_export"):
-        nav_items.append(("Cost - Export", "Cost - Export"))
-    if has_perm("can_add_sort"):
-        nav_items.append(("Add Sort", "Add Sort"))
-        nav_items.append(("RM Price", "RM Price"))
-    if is_developer():
-        nav_items.append(("Users", "Users"))
-
-    st.markdown("<div class='nav-wrap'>", unsafe_allow_html=True)
-    total = len(nav_items) + 1
-    cols = st.columns([1] * len(nav_items) + [2]) if nav_items else st.columns([1])
-    for i, (label, module_name) in enumerate(nav_items):
-        with cols[i]:
-            if st.button(label, key=f"nav_{module_name}"):
-                set_module(module_name)
-                st.rerun()
-    with cols[-1]:
-        if st.button("Logout", key="top_logout"):
-            st.session_state.clear()
-            st.rerun()
-    st.markdown("</div>", unsafe_allow_html=True)
 
 def login_page():
     st.markdown("""
-<div class='rbm-top'>
-  <div><div class='rbm-logo'>RBM AI</div><div class='rbm-sub'>Robotic Business Management</div></div>
-  <div class='rbm-title'>RBM Textile Costing</div>
-</div>
+<div class="rbm-top"><div class="logo"><div class="big">RBM AI</div><div class="sub">Robotic Business Management</div></div><div class="titlebox">Costing</div></div>
 """, unsafe_allow_html=True)
-    c1, c2, c3 = st.columns([1, 1.1, 1])
-    with c2:
-        st.markdown("### Secure Client Login")
-        with st.form("login_form"):
-            username = st.text_input("Username", value="admin")
-            password = st.text_input("Password", type="password")
-            submitted = st.form_submit_button("Login", type="primary")
-        if submitted:
-            try:
-                rows = sb_select(TABLE_USERS, {"username": f"eq.{username.strip()}", "select": "*", "limit": "1"})
-                user = rows[0] if rows else None
-                ok = False
-                if user:
-                    stored = str(user.get("password") or "")
-                    ok = stored == password or stored == hash_password(password)
-                if ok:
-                    st.session_state["username"] = username.strip()
-                    st.session_state["role"] = user.get("role", "User")
-                    st.session_state["perms"] = {k: bool(user.get(k)) for k, _ in PERMISSIONS}
-                    st.session_state["module"] = "Cost Sheet" if bool(user.get("can_cost_sheet")) or user.get("role") == "Developer" else "Cost - Local"
-                    audit("LOGIN", "", username.strip())
-                    st.rerun()
-                else:
-                    st.error("Wrong username or password.")
-            except Exception as e:
-                st.error(str(e))
+    st.markdown('<div class="login-card">', unsafe_allow_html=True)
+    st.markdown("### Secure Client Login")
+    u=st.text_input("Username", value="admin", key="login_u")
+    p=st.text_input("Password", value="", type="password", key="login_p")
+    if st.button("Login", type="primary"):
+        users=load_users()
+        if "username" in users.columns and "password" in users.columns:
+            m=users[(users["username"].astype(str).str.lower()==u.strip().lower()) & (users["password"].astype(str)==p.strip())]
+            if not m.empty:
+                st.session_state.logged_in=True
+                st.session_state.username=m.iloc[0]["username"]
+                st.session_state.role=m.iloc[0].get("role","User")
+                st.session_state.module="Cost Sheet"
+                st.rerun()
+        st.markdown('<div class="warn">Wrong username or password.</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
+# ---------- calculation ----------
+def derive_after_knitting_pct(row:Dict[str,Any])->float:
+    amt=to_float(getv(row,"wastage_2"), 0)
+    raw=to_float(getv(row,"raw_material_cost"), 0)
+    knit=to_float(getv(row,"knittng__processing_cost","knitting_processing_cost"), 0)
+    base=raw+knit
+    return round(amt/base*100,2) if amt and base else 10.0
 
-def pick_sort(default: str = "") -> str:
-    rows = list_sort_numbers()
-    if not default:
-        default = first_sort()
-    # Compact single-row selector: user can type or choose from dropdown.
-    c1, c2 = st.columns([1.1, 2.8])
-    with c1:
-        typed = st.text_input("Sort No", value=default, key="sort_typed")
-    with c2:
-        idx = rows.index(default) if default in rows else 0
-        selected = st.selectbox("Select from list", options=rows, index=idx if rows else None, key="sort_pick") if rows else ""
-    return (typed.strip() or selected or "").strip()
+def derive_commission_pct(row:Dict[str,Any])->float:
+    amt=to_float(getv(row,"commission"), 0)
+    base=to_float(getv(row,"price_per_kg_inr","selling_price"), 0)
+    return round(amt/base*100,2) if amt and base else 5.0
 
-def report_metrics(calc: Dict[str, Any]):
-    st.markdown(f"""
-<div class='report-head'><span>RBM TEXTILE COST SHEET</span><span style='color:#ffe92e'>SORT NO: {calc['sort_no']}</span></div>
-<div class='metric-row'>
-  <div class='metric bg-teal'><small>Structure</small><b>{calc['structure']}</b></div>
-  <div class='metric bg-blue'><small>Finish GSM</small><b>{calc['finish_gsm']}</b></div>
-  <div class='metric bg-gold'><small>Finish Width</small><b>{calc['finish_width']}</b></div>
-  <div class='metric bg-green'><small>Selling Price</small><b>{calc['sales_price']}</b></div>
-  <div class='metric bg-red'><small>USD/KG</small><b>{calc['usd_kg']}</b></div>
-</div>
-""", unsafe_allow_html=True)
+def derive_margin_pct(row:Dict[str,Any])->float:
+    margin=to_float(getv(row,"margin"), 0)
+    costing=to_float(getv(row,"costing"), 0)
+    return round(margin/costing*100,2) if margin and costing else 10.0
 
+def apply_whatif(row:Dict[str,Any], wf:Dict[str,float])->Dict[str,Any]:
+    # This follows the offline desktop formula from Final app_desktop.py.
+    r=dict(row)
+    currency=to_float(wf.get("currency_rate"), to_float(getv(r,"currency_rate"),87))
+    discount=to_float(wf.get("discount_if_any"), to_float(getv(r,"discount_if_any"),0))
+    freight=to_float(wf.get("freight_inr_per_kg"), to_float(getv(r,"freight_inr_per_kg"),0))
+    commission_pct=to_float(wf.get("commission_pct"), derive_commission_pct(r))
+    lc_int=to_float(wf.get("lc_days_interest"), to_float(getv(r,"lc_days_interest","lc_days_interest_amount","lc_days__interest_15_pm"),0))
+    wastage_amt=to_float(wf.get("wastage"), to_float(getv(r,"wastage"),0))
+    dyeing=to_float(wf.get("dyeing_cost_rs"), to_float(getv(r,"dyeing_cost_rs"),0))
+    knitting=to_float(wf.get("knittng__processing_cost"), to_float(getv(r,"knittng__processing_cost"),90))
+    waste_after_pct=to_float(wf.get("wastage_after_knitting_pct"), derive_after_knitting_pct(r))
+    margin_pct=to_float(wf.get("margin_pct"), derive_margin_pct(r))
 
+    cotton_yarn=to_float(getv(r,"cotton_yarn_costing"),0)
+    dyed_yarn=cotton_yarn+wastage_amt+dyeing
+    cotton_prop_raw=getv(r,"cotton_dyed_proportion_cost")
+    cotton_prop=to_float(cotton_prop_raw, cotton_yarn+wastage_amt)
+    raw=cotton_prop
+    for k in ['polyester_cost','spandex_cost','melange_cost','kora_yarn_cost','reactive_yarn_cost','cooltex_yarn_cost','recycle_yarn_cost','dyed_poly_yarn_cost','micro_modal','viscose']:
+        raw += to_float(getv(r,k),0)
+    base_cost=raw+knitting
+    waste_after_amt=base_cost*waste_after_pct/100.0
+    costing=base_cost+waste_after_amt
+    margin_amt=costing*margin_pct/100.0
+    selling=costing+margin_amt-discount
+    price_per_kg=selling
+    commission_amt=price_per_kg*commission_pct/100.0
+    total_inr=price_per_kg+freight+commission_amt+lc_int
+    price_usd=total_inr/currency if currency else 0
+    lm=to_float(getv(r,"linear_mtrskg"),0)
+    ly=to_float(getv(r,"linear_ydgskg"),0)
+    r.update({
+        'wastage':wastage_amt, 'dyeing_cost_rs':dyeing, 'dyed_yarn_cost_rs':dyed_yarn,
+        'cotton_dyed_proportion_cost':cotton_prop, 'raw_material_cost':raw,
+        'knittng__processing_cost':knitting, 'wastage_after_knitting_pct':waste_after_pct,
+        'wastage_2':waste_after_amt, 'costing':costing, 'margin':margin_amt, 'margin_pct':margin_pct,
+        'selling_price':selling, 'currency_rate':currency, 'discount_if_any':discount,
+        'price_per_kg_inr':price_per_kg, 'freight_inr_per_kg':freight,
+        'commission':commission_amt, 'commission_pct':commission_pct, 'lc_days_interest':lc_int,
+        'total_cost_pricefreightcomlc_int_inr__kg':total_inr,
+        'total_cost_usd__kg':price_usd, 'price_usdkg':price_usd,
+        'price_usdmtrs':price_usd/lm if lm else to_float(getv(r,'price_usdmtrs'),0),
+        'price_usdyds':price_usd/ly if ly else to_float(getv(r,'price_usdyds'),0),
+    })
+    return r
+
+def row_class(label:str)->str:
+    l=label.lower()
+    if "discount" in l: return "row-red"
+    if label in ["Wastage %","Dyeing Cost Rs.","Knitting + Processing Cost","Wastage % After Knitting","Currency Rate","Freight INR/KG","Commission %","LC Days / Interest","Margin"]: return "row-green"
+    if label in ["Raw Material Cost","Costing","Selling Price","Price USD/KG","Total Cost INR/KG","Total Cost USD/KG"]: return "row-yellow"
+    return "row-blue" if len(label)%2 else ""
+
+def html_table(title:str, rows:List[tuple])->str:
+    trs=[]
+    for label,val in rows:
+        trs.append(f'<tr class="{row_class(label)}"><td>{html.escape(label)}</td><td>{html.escape(fmt(val))}</td></tr>')
+    return f'<div class="tblbox"><div class="tbltitle">▣ {html.escape(title)}</div><table class="rbmtable">{"".join(trs)}</table></div>'
+
+# ---------- pages ----------
 def cost_sheet_page():
-    header("Professional Cost Sheet Report")
-    sort_no = pick_sort(st.session_state.get("last_sort", first_sort()))
-    st.session_state["last_sort"] = sort_no
-    b1, b2, b3, b4 = st.columns([1,1,1,5])
-    with b1:
-        refresh = st.button("Refresh", type="primary")
-    with b2:
-        if has_perm("can_edit_sort") and st.button("Edit"):
-            st.session_state["edit_sort_no"] = sort_no
-            set_module("Edit Sort")
-            st.rerun()
-    with b3:
-        if has_perm("can_delete_sort") and st.button("Delete"):
-            st.session_state["delete_confirm"] = sort_no
-    row = get_sort(sort_no) if sort_no else None
-    if not row:
-        st.error("No details found for selected Sort No.")
+    header("Costing")
+    sorts=sort_options()
+    if not sorts:
+        st.error("group_costing.csv not found or empty. Upload data/group_costing.csv in GitHub.")
         return
-    with st.container():
-        st.markdown("<div class='report'>", unsafe_allow_html=True)
-        calc = compute_cost(row)
-        report_metrics(calc)
-        st.markdown("<b>What-If Analysis</b>", unsafe_allow_html=True)
-        w1, w2, w3, w4, w5, w6, w7 = st.columns(7)
-        with w1: currency_rate = st.number_input("Currency", value=clean_num(row.get("currency_rate"), 87), step=1.0)
-        with w2: discount = st.number_input("Discount", value=0.0, step=1.0)
-        with w3: margin = st.number_input("Margin %", value=10.0, step=1.0)
-        with w4: freight = st.number_input("Freight", value=0.0, step=1.0)
-        with w5: commission = st.number_input("Commission", value=0.0, step=1.0)
-        with w6: knit = st.number_input("Knit", value=0.0, step=1.0)
-        with w7: wastage = st.number_input("Wastage", value=0.0, step=1.0)
-        what_calc = compute_cost(row, {"currency_rate": currency_rate, "discount": discount, "margin": margin, "freight": freight, "commission": commission, "knit": knit, "wastage": wastage})
-        left, right = st.columns(2)
-        with left:
-            st.markdown("""
-<div class='table-box'><table><tr><th colspan='2'>Cost Build-up</th></tr>
-""" + f"""
-<tr><td>Local Cost</td><td>{calc['local_cost']}</td></tr>
-<tr><td>Sales Price</td><td>{calc['sales_price']}</td></tr>
-<tr class='green-row'><td>What-If Cost</td><td>{what_calc['what_if_cost']}</td></tr>
-<tr class='green-row'><td>What-If Sales</td><td>{what_calc['what_if_sales']}</td></tr>
-</table></div>
-""", unsafe_allow_html=True)
-        with right:
-            st.markdown("""
-<div class='table-box'><table><tr><th colspan='2'>Export / Price Calculation</th></tr>
-""" + f"""
-<tr class='green-row'><td>Currency Rate</td><td>{what_calc['currency_rate']}</td></tr>
-<tr class='red-row'><td>Discount If Any</td><td>{fmt(discount)}</td></tr>
-<tr><td>Price USD/KG</td><td>{calc['usd_kg']}</td></tr>
-<tr><td>Price USD/Mtrs</td><td>{calc['usd_mtrs']}</td></tr>
-<tr><td>Price USD/Yds</td><td>{calc['usd_yds']}</td></tr>
-<tr><td>Total Cost INR/KG</td><td>{calc['total_cost_inr_kg']}</td></tr>
-<tr><td>Total Cost USD/KG</td><td>{calc['total_cost_usd_kg']}</td></tr>
-<tr class='yellow-row'><td>What-If USD/KG</td><td>{what_calc['what_if_usd']}</td></tr>
-</table></div>
-""", unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
+    selected=st.session_state.get("selected_sort", sorts[0])
+    if selected not in sorts: selected=sorts[0]
+    c0,c1,c2,c3,c4,c5=st.columns([1.4,2.3,0.7,0.95,1.15,3.2], gap="small")
+    with c0: st.markdown('<div class="label">Sort No (Excel D1):</div>', unsafe_allow_html=True)
+    with c1:
+        sort=st.selectbox("Sort No", sorts, index=sorts.index(selected), label_visibility="collapsed")
+        st.session_state.selected_sort=sort
+    with c2:
+        if st.button("Refresh", type="primary"): st.rerun()
+    with c3: st.button("Print Preview")
+    with c4: st.button("Export This Sort")
+    with c5: st.markdown('<span class="fast">Fast mode: Cost sheet loads selected sort only</span>', unsafe_allow_html=True)
 
-
-def vertical_report(title: str, items: List[tuple]):
-    header(title)
-    sort_no = pick_sort(st.session_state.get("last_sort", first_sort()))
-    st.session_state["last_sort"] = sort_no
-    row = get_sort(sort_no) if sort_no else None
-    if not row:
-        st.error("No details found.")
+    base=get_sort_row(sort)
+    if not base:
+        st.error("Selected Sort No not found.")
         return
-    calc = compute_cost(row)
-    st.markdown("<div class='report'>", unsafe_allow_html=True)
-    st.markdown(f"<div class='report-head'><span>{title.upper()}</span><span>RBM Textile Costing</span></div>", unsafe_allow_html=True)
-    html = "<div class='table-box vertical-table'><table>"
-    for label, key in items:
-        val = calc.get(key, "-")
-        cls = ""
-        if label in ["Price", "Local Cost", "Sales Price", "Total Cost USD/KG"]:
-            cls = " class='yellow-row'"
-        html += f"<tr{cls}><th>{label}</th><td><b>{val}</b></td></tr>"
-    html += "</table></div>"
-    st.markdown(html, unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
 
+    # default = exact offline group_costing values; apply only after Submit/Apply
+    wf_key=f"wf_{sort}"
+    applied = st.session_state.get(wf_key)
+    row = apply_whatif(base, applied) if applied else base
 
-def sort_form_page(mode="Add"):
-    title = "Add Sort" if mode == "Add" else "Edit Sort"
-    header(title)
-    row = {}
-    sort_no_fixed = ""
-    if mode == "Edit":
-        sort_no_fixed = st.session_state.get("edit_sort_no") or st.session_state.get("last_sort", first_sort())
-        row = get_sort(sort_no_fixed) or {}
-    with st.form("sort_form"):
-        c1, c2, c3, c4 = st.columns(4)
-        with c1:
-            sort_no = st.text_input("Sort No", value=str(row.get("sort_no", "")), disabled=(mode == "Edit"))
-            structure = st.text_input("Structure", value=str(row.get("structure", "")))
-        with c2:
-            finish_gsm = st.number_input("Finish GSM", value=clean_num(row.get("finish_gsm")), step=1.0)
-            finish_width = st.number_input("Finish Width", value=clean_num(row.get("finish_width")), step=1.0)
-        with c3:
-            local_cost = st.number_input("Local Cost", value=clean_num(row.get("local_cost")), step=1.0)
-            sales_price = st.number_input("Sales Price", value=clean_num(row.get("sales_price")), step=1.0)
-        with c4:
-            currency_rate = st.number_input("Currency Rate", value=clean_num(row.get("currency_rate"), 87), step=1.0)
-            usd_kg = st.number_input("USD/KG", value=clean_num(row.get("usd_kg")), step=0.1)
-        c5, c6, c7, c8 = st.columns(4)
-        with c5: usd_mtrs = st.number_input("USD/Mtrs", value=clean_num(row.get("usd_mtrs")), step=0.1)
-        with c6: usd_yds = st.number_input("USD/Yds", value=clean_num(row.get("usd_yds")), step=0.1)
-        with c7: total_cost_inr_kg = st.number_input("Total Cost INR/KG", value=clean_num(row.get("total_cost_inr_kg", row.get("total_cost_inr"))), step=1.0)
-        with c8: total_cost_usd_kg = st.number_input("Total Cost USD/KG", value=clean_num(row.get("total_cost_usd_kg", row.get("total_cost_usd"))), step=0.1)
-        submitted = st.form_submit_button("Save Sort", type="primary")
-    if submitted:
-        payload = {
-            "structure": structure.strip(), "finish_gsm": finish_gsm, "finish_width": finish_width,
-            "local_cost": local_cost, "sales_price": sales_price, "currency_rate": currency_rate,
-            "usd_kg": usd_kg, "usd_mtrs": usd_mtrs, "usd_yds": usd_yds,
-            "total_cost_inr_kg": total_cost_inr_kg, "total_cost_usd_kg": total_cost_usd_kg,
+    st.markdown(f'<div class="sheet-head"><span>RBM TEXTILE COST SHEET</span><span class="sort">SORT NO: {html.escape(str(sort))}</span></div>', unsafe_allow_html=True)
+    st.markdown(f"""
+<div class="card-row">
+  <div class="kpi k1"><b>Structure</b> {html.escape(fmt(getv(row,'structure')))}</div>
+  <div class="kpi k2"><b>Finish GSM</b> {html.escape(fmt(getv(row,'finish_gsm')))}</div>
+  <div class="kpi k3"><b>Finish Width</b> {html.escape(fmt(getv(row,'finish_width')))}</div>
+  <div class="kpi k4"><b>Selling Price</b> {html.escape(fmt(getv(row,'selling_price')))}</div>
+  <div class="kpi k5"><b>USD/KG</b> {html.escape(fmt(getv(row,'total_cost_usd__kg','price_usdkg')))}</div>
+</div>
+""", unsafe_allow_html=True)
+
+    with st.form(f"whatif_form_{sort}", clear_on_submit=False):
+        st.markdown('<div class="whatif-title">What-If Analysis</div>', unsafe_allow_html=True)
+        cols=st.columns(9, gap="small")
+        defaults={
+            'wastage':to_float(getv(row,'wastage'),0),
+            'dyeing_cost_rs':to_float(getv(row,'dyeing_cost_rs'),0),
+            'knittng__processing_cost':to_float(getv(row,'knittng__processing_cost'),90),
+            'wastage_after_knitting_pct':derive_after_knitting_pct(row),
+            'discount_if_any':to_float(getv(row,'discount_if_any'),0),
+            'currency_rate':to_float(getv(row,'currency_rate'),87),
+            'freight_inr_per_kg':to_float(getv(row,'freight_inr_per_kg'),0),
+            'commission_pct':derive_commission_pct(row),
+            'lc_days_interest':to_float(getv(row,'lc_days_interest','lc_days_interest_amount'),0),
+            'margin_pct':derive_margin_pct(row),
         }
-        try:
-            if mode == "Add":
-                payload.update({"sort_no": sort_no.strip(), "created_by": st.session_state.get("username"), "created_at": now_text()})
-                sb_insert(TABLE_SORT, payload)
-                audit("ADD_SORT", "", str(payload))
-                st.success("Sort added successfully.")
-            else:
-                sb_update(TABLE_SORT, {"sort_no": f"eq.{sort_no_fixed}"}, payload)
-                audit("EDIT_SORT", str(row), str(payload))
-                st.success("Sort updated successfully.")
-        except Exception as e:
-            st.error(str(e))
+        keys=[('wastage','Waste %'),('dyeing_cost_rs','Dyeing Cost Rs.'),('wastage_after_knitting_pct','Knit Waste %'),('discount_if_any','Discount %'),('currency_rate','Currency Rate'),('freight_inr_per_kg','Freight INR/KG'),('commission_pct','Commission %'),('lc_days_interest','LC Days / Interest'),('margin_pct','Margin %')]
+        vals={}
+        for i,(k,label) in enumerate(keys):
+            with cols[i]: vals[k]=st.number_input(label, value=float(defaults[k]), step=1.0 if k!='wastage' else 0.25, format="%.2f")
+        ctry, submit_col, freight_col, clear_col, blank = st.columns([1.5,0.7,1.1,0.7,5], gap="small")
+        with ctry: st.selectbox("Country", ["Bangladesh","Vietnam","Sri Lanka","Japan","USA","UAE"], index=0)
+        with submit_col: submitted=st.form_submit_button("Apply", type="primary")
+        with freight_col: st.form_submit_button("Freight Master")
+        with clear_col: cleared=st.form_submit_button("Clear")
+        if submitted:
+            st.session_state[wf_key]=vals
+            st.rerun()
+        if cleared:
+            st.session_state.pop(wf_key, None)
+            st.rerun()
 
+    cost_rows=[
+        ("Cotton Yarn Costing",getv(row,'cotton_yarn_costing')),("Wastage %",getv(row,'wastage')),("Dyeing Cost Rs.",getv(row,'dyeing_cost_rs')),
+        ("Dyed Yarn Cost Rs.",getv(row,'dyed_yarn_cost_rs')),("Cotton Dyed Proportion Cost",getv(row,'cotton_dyed_proportion_cost')),
+        ("Polyester Cost",getv(row,'polyester_cost')),("Spandex Cost",getv(row,'spandex_cost')),("Kora Yarn Cost",getv(row,'kora_yarn_cost')),
+        ("Raw Material Cost",getv(row,'raw_material_cost')),("Knitting + Processing Cost",getv(row,'knittng__processing_cost')),
+        ("Wastage % After Knitting",getv(row,'wastage_after_knitting_pct', default=derive_after_knitting_pct(row))),
+        ("Wastage After Knitting Cost",getv(row,'wastage_2')),("Costing",getv(row,'costing')),("Margin",getv(row,'margin')),("Selling Price",getv(row,'selling_price')),
+    ]
+    export_rows=[
+        ("Currency Rate",getv(row,'currency_rate')),("Discount If Any",getv(row,'discount_if_any')),("Price USD/KG",getv(row,'price_usdkg','total_cost_usd__kg')),
+        ("Price USD/Mtrs",getv(row,'price_usdmtrs')),("Price USD/Yds",getv(row,'price_usdyds')),("Linear Mtrs/Kg",getv(row,'linear_mtrskg')),
+        ("Linear Yds/Kg",getv(row,'linear_ydgskg')),("Width CMS",getv(row,'width_cms','finish_width')),("Width Inch",getv(row,'width_inch')),
+        ("Weight GSM",getv(row,'weight_gsm','finish_gsm')),("Price Per KG INR",getv(row,'price_per_kg_inr','selling_price')),("Freight INR/KG",getv(row,'freight_inr_per_kg')),
+        ("Commission %",getv(row,'commission_pct', default=derive_commission_pct(row))),("Commission Amount",getv(row,'commission')),
+        ("LC Days / Interest",getv(row,'lc_days_interest','lc_days_interest_amount','lc_days__interest_15_pm')),
+        ("Total Cost INR/KG",getv(row,'total_cost_pricefreightcomlc_int_inr__kg')),("Total Cost USD/KG",getv(row,'total_cost_usd__kg')),
+    ]
+    st.markdown(f'<div class="table-grid">{html_table("Cost Build-up",cost_rows)}{html_table("Export / Price Calculation",export_rows)}</div>', unsafe_allow_html=True)
+    st.markdown('<div class="footer"><span>Publisher: <b>RBM Textile Solutions</b></span><span>Offline Textile Costing • Actual Excel Data • Print Preview • Backup</span><span>Made in India 🇮🇳</span></div><div class="content-pad"></div>', unsafe_allow_html=True)
+
+def simple_cost_page(kind:str):
+    header("Costing")
+    sorts=sort_options(); selected=st.session_state.get("selected_sort", sorts[0] if sorts else "")
+    st.markdown(f'<div class="sheet-head"><span>{html.escape(kind.upper())}</span></div>', unsafe_allow_html=True)
+    if not sorts:
+        st.error("No sort data found."); return
+    sort=st.selectbox("Sort No", sorts, index=sorts.index(selected) if selected in sorts else 0, key=f"{kind}_sort")
+    r=get_sort_row(sort)
+    if kind=="Cost - Local":
+        rows=[("Sort No",sort),("Structure",getv(r,'structure')),("Finish GSM",getv(r,'finish_gsm')),("Finish Width",getv(r,'finish_width')),("Local Cost",getv(r,'price_per_kg_inr','selling_price')),("Sales Price",getv(r,'selling_price'))]
+    else:
+        rows=[("Sort No",sort),("Structure",getv(r,'structure')),("Finish GSM",getv(r,'finish_gsm')),("Finish Width",getv(r,'finish_width')),("Price",getv(r,'selling_price')),("Currency Rate",getv(r,'currency_rate')),("USD/Kg",getv(r,'price_usdkg','total_cost_usd__kg')),("Price USD Mtrs",getv(r,'price_usdmtrs')),("Price USD Yds",getv(r,'price_usdyds')),("Total Cost INR/KG",getv(r,'total_cost_pricefreightcomlc_int_inr__kg')),("Total Cost USD/KG",getv(r,'total_cost_usd__kg'))]
+    st.markdown(html_table(kind, rows), unsafe_allow_html=True)
+
+def add_sort_page():
+    header("Costing")
+    st.markdown('<div class="sheet-head"><span>Add Sort</span></div>', unsafe_allow_html=True)
+    with st.form("add_sort_form"):
+        c1,c2,c3=st.columns(3, gap="small")
+        sort=c1.text_input("Sort No")
+        structure=c1.text_input("Structure")
+        gsm=c2.number_input("Finish GSM", value=0.0, step=1.0, format="%.2f")
+        width=c2.number_input("Finish Width", value=0.0, step=1.0, format="%.2f")
+        local=c3.number_input("Local Cost", value=0.0, step=1.0, format="%.2f")
+        sales=c3.number_input("Sales Price", value=0.0, step=1.0, format="%.2f")
+        submitted=st.form_submit_button("Submit / Save Sort", type="primary")
+        if submitted:
+            if not sort.strip(): st.error("Sort No required.")
+            else:
+                df=load_group(); c=group_sort_col(df) if not df.empty else 'dev_sorts'
+                new={col:"" for col in df.columns}
+                if c in new: new[c]=sort.strip()
+                for col,val in [('structure',structure),('finish_gsm',gsm),('finish_width',width),('selling_price',sales),('price_per_kg_inr',local)]:
+                    if col in new: new[col]=val
+                df=pd.concat([df,pd.DataFrame([new])], ignore_index=True)
+                save_group(df); st.success("Sort saved in current app session.")
 
 def rm_price_page():
-    header("RM Price Master")
-    rows = get_rm_rows()
-    particulars_list = sorted({str(r.get("particulars")) for r in rows if r.get("particulars")})
-    product_list = sorted({str(r.get("product")) for r in rows if r.get("product")})
-    st.markdown("<div class='compact-card'>", unsafe_allow_html=True)
+    header("Costing")
+    st.markdown('<div class="sheet-head"><span>RM Price Master</span></div>', unsafe_allow_html=True)
+    df=load_rm()
     with st.form("rm_form"):
-        c1, c2, c3, c4 = st.columns([2,2,1,1])
-        with c1:
-            particulars_pick = st.selectbox("Particulars Dropdown", [""] + particulars_list)
-            particulars_new = st.text_input("New / Selected Particulars", value=particulars_pick)
-        with c2:
-            product_pick = st.selectbox("Product/Yarn Dropdown", [""] + product_list)
-            product_new = st.text_input("New / Selected Product", value=product_pick)
-        with c3:
-            price = st.number_input("Price", value=0.0, step=1.0)
-        with c4:
-            st.write("")
-            save = st.form_submit_button("Save RM Price", type="primary")
-    st.markdown("</div>", unsafe_allow_html=True)
-    if save:
-        try:
-            existing = sb_select(TABLE_RM, {"particulars": f"eq.{particulars_new.strip()}", "product": f"eq.{product_new.strip()}", "select": "*", "limit": "1"})
-            payload = {"particulars": particulars_new.strip(), "product": product_new.strip(), "price": price, "changed_by": st.session_state.get("username"), "changed_at": now_text()}
-            if existing:
-                sb_update(TABLE_RM, {"id": f"eq.{existing[0]['id']}"}, payload)
-                audit("EDIT_RM_PRICE", str(existing[0]), str(payload))
-            else:
-                sb_insert(TABLE_RM, payload)
-                audit("ADD_RM_PRICE", "", str(payload))
-            st.success("RM Price saved.")
-        except Exception as e:
-            st.error(str(e))
-    st.dataframe(rows, use_container_width=True, height=430)
-
+        c1,c2,c3,c4=st.columns([2,2,1,1], gap="small")
+        parts=sorted([x for x in df.get('particulars',pd.Series(dtype=str)).astype(str).unique() if x])
+        prods=sorted([x for x in df.get('product',pd.Series(dtype=str)).astype(str).unique() if x])
+        part=c1.selectbox("Particulars", parts+['Add New'], index=0 if parts else 0)
+        if part=='Add New': part=c1.text_input("New Particulars")
+        prod=c2.selectbox("Product / Yarn", prods+['Add New'], index=0 if prods else 0)
+        if prod=='Add New': prod=c2.text_input("New Product / Yarn")
+        price=c3.number_input("Price", value=0.0, step=1.0, format="%.2f")
+        save=c4.form_submit_button("Save RM Price", type="primary")
+        if save and part and prod:
+            new={'particulars':part,'product':prod,'price':price,'change_date':datetime.now().strftime('%Y-%m-%d %H:%M:%S'),'price_numeric':price}
+            df=pd.concat([df,pd.DataFrame([new])], ignore_index=True); save_rm(df); st.success("RM Price saved.")
+    st.dataframe(df, use_container_width=True, height=420)
 
 def users_page():
-    header("User Management")
-    if not is_developer():
-        st.error("Only Developer can manage users.")
-        return
+    header("Costing")
+    if st.session_state.role not in ["Developer","Admin"]:
+        st.error("You do not have permission for User Management."); return
+    st.markdown('<div class="sheet-head"><span>User Management</span></div>', unsafe_allow_html=True)
+    df=load_users()
     with st.form("user_form"):
-        c1, c2, c3 = st.columns(3)
-        with c1: username = st.text_input("Username")
-        with c2: password = st.text_input("Password", help="blank = keep old password for existing user")
-        with c3: role = st.selectbox("Role", ["Admin", "User", "Developer"])
-        cols = st.columns(6)
-        perm_values = {}
-        for i, (k, label) in enumerate(PERMISSIONS):
-            with cols[i % 6]:
-                perm_values[k] = st.checkbox(label)
-        submitted = st.form_submit_button("Save User", type="primary")
-    if submitted:
-        try:
-            payload = {"username": username.strip(), "password": password, "role": role}
-            payload.update(perm_values)
-            existing = sb_select(TABLE_USERS, {"username": f"eq.{username.strip()}", "select": "*", "limit": "1"})
-            if existing:
-                if not password:
-                    payload.pop("password")
-                sb_update(TABLE_USERS, {"username": f"eq.{username.strip()}"}, payload)
-                audit("EDIT_USER", str(existing[0]), str(payload))
+        c1,c2,c3=st.columns(3, gap="small")
+        username=c1.text_input("Username")
+        password=c2.text_input("Password")
+        role_options=["Admin","User"] if st.session_state.role!="Developer" else ["Admin","User","Developer"]
+        role=c3.selectbox("Role", role_options)
+        pcols=st.columns(7, gap="small")
+        vals={}
+        for i,(m,k) in enumerate([(m,PERM[m]) for m in MODULES]):
+            if m=="Users" and role=="User": vals[k]=False
+            else: vals[k]=pcols[i].checkbox(m, value=(role in ["Admin","Developer"]))
+        save=st.form_submit_button("Save User", type="primary")
+        if save:
+            if not username or not password: st.error("Username and Password required.")
             else:
-                if not password:
-                    st.error("Password required for new user.")
-                    return
-                sb_insert(TABLE_USERS, payload)
-                audit("ADD_USER", "", username.strip())
-            st.success("User saved.")
-        except Exception as e:
-            st.error(str(e))
-    users = sb_select(TABLE_USERS, {"select": "*", "order": "id.asc"})
-    st.dataframe(users, use_container_width=True, height=300)
+                row={'username':username,'password':password,'role':role, **{k:v for k,v in vals.items()}, 'can_edit_sort': vals.get('can_add_sort',False), 'can_delete_sort': vals.get('can_add_sort',False), 'created_at':datetime.now().isoformat()}
+                df=df[df['username'].astype(str).str.lower()!=username.lower()] if 'username' in df.columns else df
+                df=pd.concat([df,pd.DataFrame([row])],ignore_index=True); save_users(df); st.success("User saved.")
+    show=df.copy()
+    if st.session_state.role!="Developer" and 'role' in show.columns:
+        show=show[show['role'].astype(str)!="Developer"]
+    st.dataframe(show, use_container_width=True, height=400)
 
-
-def delete_area():
-    target = st.session_state.get("delete_confirm")
-    if target:
-        st.warning(f"Delete Sort No {target}?")
-        c1, c2 = st.columns([1,5])
-        with c1:
-            if st.button("Confirm Delete"):
-                try:
-                    old = get_sort(target)
-                    sb_delete(TABLE_SORT, {"sort_no": f"eq.{target}"})
-                    audit("DELETE_SORT", str(old), "")
-                    st.session_state.pop("delete_confirm", None)
-                    st.success("Deleted.")
-                    st.rerun()
-                except Exception as e:
-                    st.error(str(e))
-        with c2:
-            if st.button("Cancel Delete"):
-                st.session_state.pop("delete_confirm", None)
-                st.rerun()
-
-
-# -----------------------------
-# Main router
-# -----------------------------
-if not st.session_state.get("username"):
+# ---------- main ----------
+if not st.session_state.logged_in:
     login_page()
-else:
-    module = st.session_state.get("module") or st.query_params.get("module", "")
-    if not module:
-        if has_perm("can_cost_sheet"):
-            module = "Cost Sheet"
-        elif has_perm("can_cost_local"):
-            module = "Cost - Local"
-        elif has_perm("can_cost_export"):
-            module = "Cost - Export"
-        else:
-            module = "Home"
-        st.session_state["module"] = module
+    st.stop()
 
-    try:
-        if module == "Cost Sheet":
-            cost_sheet_page()
-            delete_area()
-        elif module == "Cost - Local":
-            vertical_report("Cost - Local", [("Sort No", "sort_no"), ("Structure", "structure"), ("Finish GSM", "finish_gsm"), ("Finish Width", "finish_width"), ("Local Cost", "local_cost"), ("Sales Price", "sales_price")])
-        elif module == "Cost - Export":
-            vertical_report("Cost - Export", [("Sort No", "sort_no"), ("Structure", "structure"), ("Finish GSM", "finish_gsm"), ("Finish Width", "finish_width"), ("Price", "sales_price"), ("Currency Rate", "currency_rate"), ("USD/Kg", "usd_kg"), ("Price USD Mtrs", "usd_mtrs"), ("Price USD Yds", "usd_yds"), ("Total Cost INR/KG", "total_cost_inr_kg"), ("Total Cost USD/KG", "total_cost_usd_kg")])
-        elif module == "Add Sort":
-            sort_form_page("Add")
-        elif module == "Edit Sort":
-            sort_form_page("Edit")
-        elif module == "RM Price":
-            rm_price_page()
-        elif module == "Users":
-            users_page()
-        else:
-            header("RBM Textile Costing")
-            st.info("No module permission available for this user.")
-    except Exception as e:
-        st.error(str(e))
+module=st.session_state.get("module","Cost Sheet")
+if not has_perm(module):
+    module="Cost Sheet"
+    st.session_state.module=module
+
+if module=="Cost Sheet": cost_sheet_page()
+elif module=="Cost - Local": simple_cost_page("Cost - Local")
+elif module=="Cost - Export": simple_cost_page("Cost - Export")
+elif module=="Add Sort": add_sort_page()
+elif module=="RM Price": rm_price_page()
+elif module=="Users": users_page()
+else: cost_sheet_page()
