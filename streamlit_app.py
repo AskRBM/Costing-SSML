@@ -45,14 +45,18 @@ st.markdown(
 div[data-testid="stVerticalBlock"] {gap:0.18rem;}
 hr {margin:0.15rem 0;}
 /* Top desktop-style header */
-.rbm-topbar{background:#0b4f73;color:#fff;display:grid;grid-template-columns:155px 260px 1fr 270px;align-items:center;gap:8px;padding:5px 12px;border-radius:5px 5px 0 0;min-height:54px;}
+.rbm-topbar{background:#0b4f73;color:#fff;display:grid;grid-template-columns:145px 260px 1fr 260px;align-items:center;gap:8px;padding:4px 10px;border-radius:5px 5px 0 0;min-height:48px;}
 .rbm-logo{font-size:28px;font-weight:900;line-height:25px;letter-spacing:.5px;}
 .rbm-sub{font-size:9px;font-weight:700;line-height:11px;}
-.rbm-title{background:#128b77;color:#fff;padding:8px 18px;font-size:21px;font-weight:900;text-align:center;border-bottom:4px solid #c8f5e8;white-space:nowrap;}
+.rbm-title{background:#128b77;color:#fff;padding:8px 18px;font-size:22px;font-weight:900;text-align:center;border-bottom:4px solid #c8f5e8;white-space:nowrap;}
 .rbm-nav{display:flex;gap:6px;justify-content:center;align-items:center;flex-wrap:nowrap;}
 .rbm-nav a{background:#fff;color:#09294a;text-decoration:none;border:1px solid #b8c5d8;border-radius:4px;padding:8px 15px;font-size:14px;font-weight:700;box-shadow:0 1px 2px rgba(0,0,0,.16);white-space:nowrap;}
 .rbm-nav a.active{background:#0d6edb;color:#fff;border-color:#0d6edb;}
 .rbm-actions{display:flex;gap:8px;align-items:center;justify-content:flex-end;font-size:12px;font-weight:800;}
+.navrow{background:#0b4f73;padding:0 10px 6px 160px;margin-top:-1px;border-radius:0 0 4px 4px;}
+.navrow div[data-testid='column']{padding:0 3px;}
+.navrow .stButton>button{width:100%;background:#fff;color:#09294a;border:1px solid #b8c5d8;border-radius:4px;font-weight:900;min-height:36px;}
+.navrow .stButton>button[kind='primary']{background:#0d6edb;color:#fff;}
 .rbm-actions .sync,.rbm-actions .on,.rbm-actions .logout{padding:8px 12px;border-radius:4px;color:#fff;text-decoration:none;font-weight:900;}
 .sync{background:#0aa74d}.on{background:#07892d}.logout{background:#cc1717}.userbox{min-width:120px;text-align:right;}
 .section-head{background:#128b77;color:white;font-size:20px;font-weight:900;padding:5px 10px;margin:0;border-radius:0;}
@@ -287,9 +291,25 @@ def set_module(module_name: str):
 
 
 def header(title: str):
+    """Professional top header. Navigation uses Streamlit buttons so module click does NOT logout."""
     username = st.session_state.get("username", "")
     role = st.session_state.get("role", "")
-    active = st.session_state.get("module", title)
+    active = st.session_state.get("module", "Cost Sheet")
+
+    # Title fixed as Costing as requested. Current module is shown through active button.
+    st.markdown(f"""
+<div class='rbm-topbar'>
+  <div><div class='rbm-logo'>RBM AI</div><div class='rbm-sub'>Robotic Business Management</div></div>
+  <div class='rbm-title'>Costing</div>
+  <div></div>
+  <div class='rbm-actions'>
+    <a class='sync'>☁ Sync Now</a>
+    <a class='on'>⊙ ON</a>
+    <div class='userbox'>User: {username} | Role: {role}</div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
     nav_items = []
     if has_perm("can_cost_sheet"):
         nav_items.append(("Cost Sheet", "Cost Sheet"))
@@ -300,32 +320,37 @@ def header(title: str):
     if has_perm("can_add_sort"):
         nav_items.append(("Add Sort", "Add Sort"))
         nav_items.append(("RM Price", "RM Price"))
-    # Users module must be visible only to Developer login.
     if is_developer():
         nav_items.append(("Users", "Users"))
-    nav_html = "".join([
-        f"<a class='{ 'active' if active == module else '' }' href='?module={module.replace(' ', '%20')}'> {label}</a>"
-        for label, module in nav_items
-    ])
-    st.markdown(f"""
-<div class='rbm-topbar'>
-  <div><div class='rbm-logo'>RBM AI</div><div class='rbm-sub'>Robotic Business Management</div></div>
-  <div class='rbm-title'>{title}</div>
-  <div class='rbm-nav'>{nav_html}</div>
-  <div class='rbm-actions'>
-    <a class='sync' href='?module={active.replace(' ', '%20')}'>☁ Sync Now</a>
-    <a class='on' href='?module={active.replace(' ', '%20')}'>⊙ ON</a>
-    <div class='userbox'>User: {username} | Role: {role}</div>
-    <a class='logout' href='?logout=1'>↻ Logout</a>
-  </div>
-</div>
-""", unsafe_allow_html=True)
+
+    # Button navigation does not clear session and does not reload/login.
+    st.markdown("<div class='navrow'>", unsafe_allow_html=True)
+    cols = st.columns([1,1,1,1,1,1,1,1,1])
+    for i, (label, module) in enumerate(nav_items):
+        with cols[i]:
+            if st.button(label, key=f"nav_{module}", type=("primary" if active == module else "secondary")):
+                st.session_state["module"] = module
+                try:
+                    st.query_params["module"] = module
+                except Exception:
+                    pass
+                st.rerun()
+    with cols[-1]:
+        if st.button("Logout", key="nav_logout"):
+            st.session_state.clear()
+            try:
+                st.query_params.clear()
+            except Exception:
+                pass
+            st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
 
 def login_page():
     st.markdown("""
-<div class='rbm-top'>
+<div class='rbm-topbar' style='grid-template-columns:145px 260px 1fr 120px;'>
   <div><div class='rbm-logo'>RBM AI</div><div class='rbm-sub'>Robotic Business Management</div></div>
-  <div class='rbm-title'>RBM Textile Costing</div>
+  <div class='rbm-title'>Costing</div>
+  <div></div><div></div>
 </div>
 """, unsafe_allow_html=True)
     c1, c2, c3 = st.columns([1, 1.1, 1])
@@ -547,36 +572,54 @@ def sort_form_page(mode="Add"):
     if mode == "Edit":
         sort_no_fixed = st.session_state.get("edit_sort_no") or st.session_state.get("last_sort", first_sort())
         row = get_sort(sort_no_fixed) or {}
-    with st.form("sort_form"):
-        c1, c2, c3, c4 = st.columns(4)
+
+    st.markdown("<div class='section-head'>Add / Edit Sort Master</div>", unsafe_allow_html=True)
+    st.markdown("<div class='report'>", unsafe_allow_html=True)
+    with st.form("sort_form", clear_on_submit=False):
+        c1, c2, c3 = st.columns(3)
         with c1:
             sort_no = st.text_input("Sort No", value=str(row.get("sort_no", "")), disabled=(mode == "Edit"))
             structure = st.text_input("Structure", value=str(row.get("structure", "")))
         with c2:
-            finish_gsm = st.number_input("Finish GSM", value=clean_num(row.get("finish_gsm")), step=1.0)
-            finish_width = st.number_input("Finish Width", value=clean_num(row.get("finish_width")), step=1.0)
+            finish_gsm = st.number_input("Finish GSM", value=float(clean_num(row.get("finish_gsm"), 0.0)), step=1.0, format="%.2f")
+            finish_width = st.number_input("Finish Width", value=float(clean_num(row.get("finish_width"), 0.0)), step=1.0, format="%.2f")
         with c3:
-            local_cost = st.number_input("Local Cost", value=clean_num(row.get("local_cost")), step=1.0)
-            sales_price = st.number_input("Sales Price", value=clean_num(row.get("sales_price")), step=1.0)
+            local_cost = st.number_input("Local Cost", value=float(clean_num(row.get("local_cost"), 0.0)), step=1.0, format="%.2f")
+            sales_price = st.number_input("Sales Price", value=float(clean_num(row.get("sales_price"), 0.0)), step=1.0, format="%.2f")
+
+        c4, c5, c6, c7 = st.columns(4)
         with c4:
-            currency_rate = st.number_input("Currency Rate", value=clean_num(row.get("currency_rate"), 87), step=1.0)
-            usd_kg = st.number_input("USD/KG", value=clean_num(row.get("usd_kg")), step=0.1)
-        c5, c6, c7, c8 = st.columns(4)
-        with c5: usd_mtrs = st.number_input("USD/Mtrs", value=clean_num(row.get("usd_mtrs")), step=0.1)
-        with c6: usd_yds = st.number_input("USD/Yds", value=clean_num(row.get("usd_yds")), step=0.1)
-        with c7: total_cost_inr_kg = st.number_input("Total Cost INR/KG", value=clean_num(row.get("total_cost_inr_kg", row.get("total_cost_inr"))), step=1.0)
-        with c8: total_cost_usd_kg = st.number_input("Total Cost USD/KG", value=clean_num(row.get("total_cost_usd_kg", row.get("total_cost_usd"))), step=0.1)
-        submitted = st.form_submit_button("Save Sort", type="primary")
+            currency_rate = st.number_input("Currency Rate", value=float(clean_num(row.get("currency_rate"), 87.0)), step=1.0, format="%.2f")
+            usd_kg = st.number_input("USD/KG", value=float(clean_num(row.get("usd_kg"), 0.0)), step=0.10, format="%.2f")
+        with c5:
+            usd_mtrs = st.number_input("USD/Mtrs", value=float(clean_num(row.get("usd_mtrs"), 0.0)), step=0.10, format="%.2f")
+            usd_yds = st.number_input("USD/Yds", value=float(clean_num(row.get("usd_yds"), 0.0)), step=0.10, format="%.2f")
+        with c6:
+            total_cost_inr_kg = st.number_input("Total Cost INR/KG", value=float(clean_num(row.get("total_cost_inr_kg", row.get("total_cost_inr")), 0.0)), step=1.0, format="%.2f")
+            total_cost_usd_kg = st.number_input("Total Cost USD/KG", value=float(clean_num(row.get("total_cost_usd_kg", row.get("total_cost_usd")), 0.0)), step=0.10, format="%.2f")
+        with c7:
+            st.write("")
+            st.write("")
+            submitted = st.form_submit_button("Submit / Save Sort", type="primary")
+    st.markdown("</div>", unsafe_allow_html=True)
+
     if submitted:
+        if not str(sort_no).strip():
+            st.error("Sort No required.")
+            return
         payload = {
-            "structure": structure.strip(), "finish_gsm": finish_gsm, "finish_width": finish_width,
-            "local_cost": local_cost, "sales_price": sales_price, "currency_rate": currency_rate,
-            "usd_kg": usd_kg, "usd_mtrs": usd_mtrs, "usd_yds": usd_yds,
-            "total_cost_inr_kg": total_cost_inr_kg, "total_cost_usd_kg": total_cost_usd_kg,
+            "structure": structure.strip(), "finish_gsm": float(finish_gsm), "finish_width": float(finish_width),
+            "local_cost": float(local_cost), "sales_price": float(sales_price), "currency_rate": float(currency_rate),
+            "usd_kg": float(usd_kg), "usd_mtrs": float(usd_mtrs), "usd_yds": float(usd_yds),
+            "total_cost_inr_kg": float(total_cost_inr_kg), "total_cost_usd_kg": float(total_cost_usd_kg),
         }
         try:
             if mode == "Add":
-                payload.update({"sort_no": sort_no.strip(), "created_by": st.session_state.get("username"), "created_at": now_text()})
+                payload.update({"sort_no": str(sort_no).strip(), "created_by": st.session_state.get("username"), "created_at": now_text()})
+                existing = sb_select(TABLE_SORT, {"sort_no": f"eq.{str(sort_no).strip()}", "select": "id", "limit": "1"})
+                if existing:
+                    st.error("This Sort No already exists. Use Edit Sort instead.")
+                    return
                 sb_insert(TABLE_SORT, payload)
                 audit("ADD_SORT", "", str(payload))
                 st.success("Sort added successfully.")
@@ -586,7 +629,6 @@ def sort_form_page(mode="Add"):
                 st.success("Sort updated successfully.")
         except Exception as e:
             st.error(str(e))
-
 
 def rm_price_page():
     header("RM Price Master")
@@ -685,6 +727,35 @@ def delete_area():
                 st.rerun()
 
 
+
+def first_allowed_module() -> str:
+    if has_perm("can_cost_sheet"):
+        return "Cost Sheet"
+    if has_perm("can_cost_local"):
+        return "Cost - Local"
+    if has_perm("can_cost_export"):
+        return "Cost - Export"
+    if has_perm("can_add_sort"):
+        return "Add Sort"
+    return "Home"
+
+def module_allowed(module: str) -> bool:
+    if is_developer():
+        return True
+    mapping = {
+        "Cost Sheet": "can_cost_sheet",
+        "Cost - Local": "can_cost_local",
+        "Cost - Export": "can_cost_export",
+        "Add Sort": "can_add_sort",
+        "RM Price": "can_add_sort",
+        "Edit Sort": "can_edit_sort",
+    }
+    # Users and Developer role options are never shown to Admin/User.
+    if module == "Users":
+        return False
+    perm = mapping.get(module)
+    return bool(perm and has_perm(perm))
+
 # -----------------------------
 # Main router
 # -----------------------------
@@ -704,15 +775,18 @@ else:
     if qp_module:
         st.session_state["module"] = qp_module
     if not module:
-        if has_perm("can_cost_sheet"):
-            module = "Cost Sheet"
-        elif has_perm("can_cost_local"):
-            module = "Cost - Local"
-        elif has_perm("can_cost_export"):
-            module = "Cost - Export"
-        else:
-            module = "Home"
+        module = first_allowed_module()
         st.session_state["module"] = module
+
+    # Never logout on module click. If user opens a disallowed module URL, redirect to first allowed module.
+    if not module_allowed(module):
+        st.session_state["module"] = first_allowed_module()
+        try:
+            st.query_params["module"] = st.session_state["module"]
+        except Exception:
+            pass
+        st.warning("You do not have permission for that module.")
+        st.rerun()
 
     try:
         if module == "Cost Sheet":
