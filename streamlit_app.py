@@ -48,36 +48,36 @@ div[data-testid="stTextInput"] input:disabled, div[data-testid="stNumberInput"] 
 div[data-testid="stVerticalBlock"] {gap:0.18rem;}
 hr {margin:0.15rem 0;}
 /* Top desktop-style header */
-.rbm-topbar{background:#0b4f73;color:#fff;display:grid;grid-template-columns:150px 265px 1fr 355px;align-items:center;gap:8px;padding:4px 10px;border-radius:5px 5px 0 0;min-height:48px;}
+.rbm-topbar{background:#0b4f73;color:#fff;display:grid;grid-template-columns:145px 250px 1fr 315px;align-items:center;gap:8px;padding:4px 10px;border-radius:4px 4px 0 0;min-height:52px;}
 .rbm-logo{font-size:28px;font-weight:900;line-height:25px;letter-spacing:.5px;}
 .rbm-sub{font-size:9px;font-weight:700;line-height:11px;}
-.rbm-title{background:#128b77;color:#fff;padding:8px 16px;font-size:20px;font-weight:900;text-align:center;border-bottom:4px solid #c8f5e8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.rbm-title{background:#128b77;color:#fff;padding:10px 16px;font-size:21px;font-weight:900;text-align:center;border-bottom:4px solid #c8f5e8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .rbm-nav{display:flex;gap:6px;justify-content:center;align-items:center;flex-wrap:nowrap;}
 .rbm-nav a{background:#fff;color:#09294a;text-decoration:none;border:1px solid #b8c5d8;border-radius:4px;padding:8px 15px;font-size:14px;font-weight:700;box-shadow:0 1px 2px rgba(0,0,0,.16);white-space:nowrap;}
 .rbm-nav a.active{background:#0d6edb;color:#fff;border-color:#0d6edb;}
-.rbm-actions{display:flex;gap:8px;align-items:center;justify-content:flex-end;font-size:12px;font-weight:800;}
-.navrow{background:#0b4f73;padding:0 10px 6px 160px;margin-top:-1px;border-radius:0 0 4px 4px;}
+.rbm-actions{display:flex;gap:7px;align-items:center;justify-content:flex-end;font-size:12px;font-weight:800;}
+.navrow{background:#0b4f73;padding:0 330px 6px 405px;margin-top:-45px;border-radius:0 0 4px 4px;min-height:43px;}
 .navrow div[data-testid='column']{padding:0 3px;}
-.navrow .stButton>button{width:100%;background:#fff;color:#09294a;border:1px solid #b8c5d8;border-radius:4px;font-weight:900;min-height:36px;}
+.navrow .stButton>button{width:100%;background:#fff;color:#09294a;border:1px solid #b8c5d8;border-radius:4px;font-weight:900;min-height:34px;padding:.25rem .35rem;font-size:13px;}
 .navrow .stButton>button[kind='primary']{background:#0d6edb;color:#fff;}
 .rbm-actions .sync,.rbm-actions .on,.rbm-actions .logout{padding:8px 12px;border-radius:4px;color:#fff;text-decoration:none;font-weight:900;}
 .sync{background:#0aa74d}.on{background:#07892d}.logout{background:#cc1717}.userbox{min-width:120px;text-align:right;}
-.section-head{background:#128b77;color:white;font-size:20px;font-weight:900;padding:5px 10px;margin:0;border-radius:0;}
-.control-strip{background:#e3ded8;border:1px solid #d2d2d2;padding:6px 8px;display:flex;align-items:center;gap:12px;flex-wrap:nowrap;}
+.section-head{background:#128b77;color:white;font-size:18px;font-weight:900;padding:4px 10px;margin:0;border-radius:0;}
+.control-strip{background:#e3ded8;border:1px solid #d2d2d2;padding:4px 8px;display:flex;align-items:center;gap:8px;flex-wrap:nowrap;}
 .fast-mode{margin-left:auto;color:#006b16;font-weight:900;font-size:13px;}
 .report{background:#f6fbff;border:1px solid #b9cfdf;padding:6px;border-radius:4px;box-shadow:none;}
-.report-head{background:#0b4f73;color:white;padding:8px 12px;font-size:21px;font-weight:900;display:flex;justify-content:space-between;align-items:center;}
-.metric-row{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:6px 0;}
-.metric{color:white;padding:7px 10px;border-radius:3px;min-height:42px;}
-.metric small{font-weight:800;display:block;font-size:11px;}
-.metric b{font-size:19px;display:block;}
+.report-head{background:#0b4f73;color:white;padding:6px 10px;font-size:18px;font-weight:900;display:flex;justify-content:space-between;align-items:center;}
+.metric-row{display:grid;grid-template-columns:repeat(5,1fr);gap:5px;margin:4px 0;}
+.metric{color:white;padding:4px 9px;border-radius:2px;min-height:26px;display:flex;align-items:center;gap:12px;}
+.metric small{font-weight:900;display:inline;font-size:11px;}
+.metric b{font-size:14px;display:inline;}
 .bg-teal{background:#138b75}.bg-blue{background:#405ad9}.bg-gold{background:#9c6a00}.bg-green{background:#10a848}.bg-red{background:#b52e34}.bg-navy{background:#0b4f73}
-.whatbox{border:1px solid #b9c3cf;background:#f7fbff;padding:8px;margin:4px 0 7px 0;border-radius:4px;}
+.whatbox{border:1px solid #b9c3cf;background:#f7fbff;padding:5px 7px;margin:3px 0 6px 0;border-radius:3px;}
 .what-title{font-weight:900;color:#09294a;margin-bottom:4px;font-size:14px;}
 .table-box{border:1px solid #cfd8e2;background:#fff;padding:0;}
 .table-box table{width:100%;border-collapse:collapse;font-size:13px;}
 .table-box th{background:#0b4f73;color:#fff;padding:6px 8px;border:1px solid #1d1d1d;text-align:left;font-weight:900;}
-.table-box td{padding:4px 8px;border:1px solid #1d1d1d;background:#f7fbff;font-weight:700;}
+.table-box td{padding:3px 8px;border:1px solid #1d1d1d;background:#f7fbff;font-weight:700;}
 .table-box tr:nth-child(even) td{background:#edf5ff;}
 .green-row td{background:#a8f2b2 !important;font-weight:900;}
 .red-row td:first-child{background:#ff6262 !important;color:#fff;font-weight:900;}
@@ -90,7 +90,7 @@ label[data-testid="stWidgetLabel"] p{font-weight:800;font-size:12px;margin-botto
 [data-testid="stForm"]{border:1px solid #b9cfdf;padding:8px;background:#f6fbff;border-radius:4px;}
 /* hide +/- step buttons in number inputs less visually noisy */
 button[aria-label="Step up"],button[aria-label="Step down"]{height:28px;}
-@media(max-width:1050px){.rbm-topbar{grid-template-columns:140px 1fr;}.rbm-nav{grid-column:1/3;justify-content:flex-start;overflow-x:auto}.rbm-actions{grid-column:1/3;justify-content:flex-start}.metric-row{grid-template-columns:1fr 1fr}.control-strip{flex-wrap:wrap}.fast-mode{margin-left:0}.rbm-title{font-size:18px;}}
+@media(max-width:1050px){.rbm-topbar{grid-template-columns:140px 1fr;}.navrow{margin-top:0;padding:0 8px 6px 8px}.rbm-actions{grid-column:1/3;justify-content:flex-start}.metric-row{grid-template-columns:1fr 1fr}.control-strip{flex-wrap:wrap}.fast-mode{margin-left:0}.rbm-title{font-size:18px;}}
 </style>
 """,
     unsafe_allow_html=True,
@@ -324,7 +324,7 @@ def header(title: str):
 
     # Button navigation does not clear session and does not reload/login.
     st.markdown("<div class='navrow'>", unsafe_allow_html=True)
-    cols = st.columns([1,1,1,1,1,1,1,1,1])
+    cols = st.columns([1,1,1,1,1,1,0.05,0.05,0.05])
     for i, (label, module) in enumerate(nav_items):
         with cols[i]:
             if st.button(label, key=f"nav_{module}", type=("primary" if active == module else "secondary")):
@@ -410,7 +410,7 @@ def detailed_cost_rows(row: Dict[str, Any], what_if: Optional[Dict[str, Any]] = 
     """
     what_if = what_if or {}
     cotton = clean_num(row.get("cotton_yarn_cost", row.get("cotton_cost", row.get("cotton_yarn", 225))), 225)
-    waste_pct = clean_num(what_if.get("wastage_pct", row.get("wastage_pct", 3.0)), 3.0)
+    waste_pct = clean_num(what_if.get("wastage_pct", row.get("wastage_pct", 6.75)), 6.75)
     dyeing = clean_num(what_if.get("dyeing_cost", row.get("dyeing_cost", row.get("dying_cost", 110))), 110)
 
     # composition percentage defaults follow existing textile sheet style: Cotton 96 + Spandex 4
@@ -521,21 +521,40 @@ def cost_sheet_page():
         "knit_waste_pct": knit_waste_pct, "margin": margin_pct,
         "knit": base['knit'], "discount": discount,
     })
-    # Important: for normal viewing use already stored/desktop calculated values from Supabase.
-    # This keeps Streamlit output equal to the desktop/SPECS uploaded calculation.
+    # Desktop/SPECS values uploaded in Supabase are source of truth for normal view.
+    # This prevents Streamlit from showing a different calculation than the desktop app.
+    DEFAULT_WASTE = 6.75
+    DEFAULT_DYE = 110.0
+    DEFAULT_KNIT = 90.0
+    DEFAULT_KNIT_WASTE = 10.0
+    DEFAULT_MARGIN = 10.0
+    DEFAULT_CURR = 87.0
+    DEFAULT_FREIGHT = 15.0
+    DEFAULT_COMM = 5.0
+    DEFAULT_LC = 0.0
     defaults_unchanged = (
-        abs(waste_pct - float(base['waste_pct'])) < 1e-9 and
-        abs(dyeing - float(base['dyeing'])) < 1e-9 and
-        abs(knit_waste_pct - float(base['knit_waste_pct'])) < 1e-9 and
-        abs(margin_pct - float(base['margin_pct'])) < 1e-9 and
-        abs(discount) < 1e-9
+        abs(waste_pct - DEFAULT_WASTE) < 1e-9 and
+        abs(dyeing - DEFAULT_DYE) < 1e-9 and
+        abs(knit_waste_pct - DEFAULT_KNIT_WASTE) < 1e-9 and
+        abs(margin_pct - DEFAULT_MARGIN) < 1e-9 and
+        abs(discount) < 1e-9 and
+        abs(currency_rate - DEFAULT_CURR) < 1e-9 and
+        abs(freight - DEFAULT_FREIGHT) < 1e-9 and
+        abs(commission - DEFAULT_COMM) < 1e-9 and
+        abs(lc_days - DEFAULT_LC) < 1e-9
     )
     saved_local = clean_num(row.get("local_cost"), d['costing'])
     saved_sales = clean_num(row.get("sales_price"), d['selling'])
     if defaults_unchanged:
+        # Back-solve raw material and margin from desktop stored totals, so totals match desktop exactly.
         d['costing'] = saved_local
         d['selling'] = saved_sales
         d['margin_value'] = max(0, saved_sales - saved_local)
+        d['raw_material'] = (saved_local / (1 + DEFAULT_KNIT_WASTE/100.0)) - DEFAULT_KNIT
+        d['waste_after_cost'] = saved_local - d['raw_material'] - DEFAULT_KNIT
+        # Keep row-level components if present; otherwise balance goes to cotton dyed proportion.
+        known = clean_num(d.get('polyester')) + clean_num(d.get('tencel')) + clean_num(d.get('spandex')) + clean_num(d.get('kora'))
+        d['cotton_prop'] = max(0, d['raw_material'] - known)
     selling = d['selling']
     price_usd_kg = clean_num(row.get("usd_kg"), selling / currency_rate if currency_rate else 0) if defaults_unchanged else (selling / currency_rate if currency_rate else 0)
     commission_amt = selling * commission / 100
