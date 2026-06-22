@@ -2,9 +2,5 @@
 base="light"
 primaryColor="#0b4f73"
 backgroundColor="#eaf6fb"
-secondaryBackgroundColor="#ffffff"
-textColor="#001b2e"
-font="sans serif"
-
-[client]
-toolbarMode="minimal"
+secondaryBackgroundColor="#f6fbff"
+textColor="#0b1f35"
