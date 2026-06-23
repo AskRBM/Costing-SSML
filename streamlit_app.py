@@ -187,9 +187,10 @@ def supabase_table_df(table: str, limit: int = 100000) -> pd.DataFrame:
     errors=[]
     for key_name, key in _available_supabase_keys():
         try:
-            # cache buster forces Streamlit Cloud/browser/proxy to read latest synced data
-            cb = urllib.parse.quote(datetime.now().strftime("%Y%m%d%H%M%S%f"))
-            url = f"{ONLINE_SUPABASE_URL}/rest/v1/{urllib.parse.quote(table)}?select=*&limit={int(limit)}&_cb={cb}"
+            # IMPORTANT: Do NOT add custom query params like _cb here.
+            # Supabase PostgREST treats unknown query params as column filters and gives PGRST100.
+            # Cache is avoided by headers and by not using st.cache_data for live Supabase reads.
+            url = f"{ONLINE_SUPABASE_URL}/rest/v1/{urllib.parse.quote(table)}?select=*&limit={int(limit)}"
             st.session_state[f"sb_url_{table}"] = url
             headers = _sb_headers(key)
             headers["Range-Unit"] = "items"
