@@ -17,7 +17,7 @@ DATA_DIR = BASE_DIR / "data"
 GROUP_CSV = DATA_DIR / "group_costing.csv"
 RM_CSV = DATA_DIR / "rm_price_master.csv"
 USERS_CSV = DATA_DIR / "users_default.csv"
-APP_VERSION = "2026-06-23-online-supabase-specs-force-v6-no-cache"
+APP_VERSION = "2026-06-23-online-supabase-specs-force-v7-sort-normalized-live"
 
 # Online app now reads live synced data from Supabase first.
 # IMPORTANT: Put these same values in Streamlit Cloud Secrets also.
@@ -117,6 +117,8 @@ def _sb_headers() -> Dict[str, str]:
         "apikey": ONLINE_SUPABASE_KEY,
         "Authorization": f"Bearer {ONLINE_SUPABASE_KEY}",
         "Content-Type": "application/json",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
     }
 
 def _expand_json_data_column(df: pd.DataFrame) -> pd.DataFrame:
@@ -286,27 +288,49 @@ def group_sort_col(df:pd.DataFrame)->str:
         if c in df.columns: return c
     return df.columns[1] if len(df.columns)>1 else "dev_sorts"
 
+def clean_sort_value(v: Any) -> str:
+    """Normalize Sort No from Supabase/CSV.
+    SQLite often sends 1202 as 1202.0. Online dropdown must show/search it as 1202.
+    """
+    try:
+        s = str(v).strip()
+        if s == "" or s.lower() in ("nan", "none", "null", "dev_sorts", "sort_no", "sort"):
+            return ""
+        if s.endswith(".0"):
+            f = float(s)
+            if abs(f - int(f)) < 1e-9:
+                return str(int(f))
+        return s
+    except Exception:
+        return str(v).strip() if v is not None else ""
+
+def sort_key_value(x: str):
+    sx = clean_sort_value(x)
+    try:
+        return (0, int(float(sx)))
+    except Exception:
+        return (1, sx)
+
 def sort_options()->List[str]:
-    # Combine Sort No from live Supabase group_costing + live Supabase specs.
-    # This is the key fix: new Sort No added offline in SPECS appears online after Sync Now.
+    # Force live Supabase SPECS first. This is required because new Sort No
+    # added in Offline app is synced to Supabase specs table, not to GitHub CSV.
     vals=[]
-    for df in [load_group(), load_specs()]:
+    seen=set()
+    for df in [load_specs(), load_group()]:
         if df.empty:
             continue
-        possible=["dev_sorts","sort_no","sort","dev_sort","sorts"]
-        found_cols=[x for x in possible if x in df.columns]
+        possible=["dev_sorts","sort_no","sort","dev_sort","sorts","sr_no"]
+        found_cols=[x for x in possible if x in df.columns and x != "sr_no"]
         if not found_cols:
-            # fallback: second column is Dev. Sorts in old SPECS CSV layout
             found_cols=[group_sort_col(df)]
         for c in found_cols:
-            for v in df[c].astype(str).tolist():
-                v=v.strip()
-                if v and v.lower() not in ("nan","none","dev_sorts","sort_no","sort") and v not in vals:
-                    vals.append(v)
-    try:
-        return sorted(vals, key=lambda x:(not x.isdigit(), int(float(x)) if str(x).replace('.0','').isdigit() else str(x)))
-    except Exception:
-        return vals
+            if c not in df.columns:
+                continue
+            for raw_v in df[c].tolist():
+                v=clean_sort_value(raw_v)
+                if v and v not in seen:
+                    seen.add(v); vals.append(v)
+    return sorted(vals, key=sort_key_value)
 
 FREIGHT_MASTER = {
     "Bangladesh": 15.0,
@@ -321,17 +345,22 @@ def freight_master_rows() -> List[tuple]:
     return [(country, rate) for country, rate in FREIGHT_MASTER.items()]
 
 def get_sort_row(sort_no:str)->Dict[str,Any]:
+    target=clean_sort_value(sort_no)
     df=load_group()
     if not df.empty:
         c=group_sort_col(df)
-        m=df[df[c].astype(str).str.strip()==str(sort_no).strip()]
-        if not m.empty:
-            return m.iloc[0].to_dict()
+        if c in df.columns:
+            m=df[df[c].apply(clean_sort_value)==target]
+            if not m.empty:
+                return m.iloc[0].to_dict()
     # Fallback: if the sort exists only in SPECS, still show it in online dropdown/pages.
     sdf=load_specs()
     if not sdf.empty:
         c=next((x for x in ["dev_sorts","sort_no","sort"] if x in sdf.columns), group_sort_col(sdf))
-        m=sdf[sdf[c].astype(str).str.strip()==str(sort_no).strip()]
+        if c in sdf.columns:
+            m=sdf[sdf[c].apply(clean_sort_value)==target]
+        else:
+            m=pd.DataFrame()
         if not m.empty:
             r=m.iloc[0].to_dict()
             return {
