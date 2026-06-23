@@ -218,13 +218,13 @@ def header(title="Costing"):
     # Compact button row directly under dark-blue header. These are real Streamlit
     # buttons, not HTML links; session_state remains alive on every module click.
     if visible:
-        cols = st.columns([max(0.72, min(1.05, 0.42 + len(m)*0.045)) for m in visible] + [0.68], gap="small")
+        cols = st.columns([max(0.45, min(0.90, 0.28 + len(m)*0.035)) for m in visible] + [0.55, 6.0], gap="small")
         for i, m in enumerate(visible):
             btn_type = "primary" if st.session_state.get("module") == m else "secondary"
-            if cols[i].button(m, key=f"nav_btn_{m}", type=btn_type, use_container_width=True):
+            if cols[i].button(m, key=f"nav_btn_{m}", type=btn_type, use_container_width=False):
                 st.session_state.module = m
                 st.rerun()
-        if cols[-1].button("Logout", key="nav_logout_btn", use_container_width=True):
+        if cols[len(visible)].button("Logout", key="nav_logout_btn", use_container_width=False):
             do_logout(); st.rerun()
 
 def login_page():
