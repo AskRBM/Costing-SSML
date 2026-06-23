@@ -341,10 +341,22 @@ def fmt(x:Any, dec:int=2)->str:
         return str(x) if x is not None else ""
 
 def getv(row:Dict[str,Any], *names, default=""):
+    """Get value safely even when Supabase/CSV column names differ.
+    Fixes online blanks caused by keys like total_cost_usd__kg vs total_cost_usd_kg.
+    """
+    if not isinstance(row, dict):
+        return default
+    norm_map = {}
+    for rk, rv in row.items():
+        norm_map[norm_col(rk)] = rv
     for n in names:
-        key=norm_col(n)
-        if key in row and str(row[key]).strip() not in ("", "nan", "None"):
-            return row[key]
+        key = norm_col(n)
+        # Try exact key first
+        if n in row and str(row[n]).strip() not in ("", "nan", "None"):
+            return row[n]
+        # Try normalized key
+        if key in norm_map and str(norm_map[key]).strip() not in ("", "nan", "None"):
+            return norm_map[key]
     return default
 
 def group_sort_col(df:pd.DataFrame)->str:
@@ -513,7 +525,7 @@ def specs_cost_row_from_specs(spec_row: Dict[str, Any], sort_no: str) -> Dict[st
     lc_interest = 0.0
     waste_amt = 0.0
     dyeing = 0.0
-    knitting = to_float(getv(r, "knittng__processing_cost", "knitting_processing_cost"), 0)
+    knitting = to_float(getv(r, "knittng__processing_cost", "knitting_processing_cost"), 90)
     waste_after_pct = 10.0
     margin_pct_default = 10.0
 
