@@ -15,7 +15,7 @@ DATA_DIR = BASE_DIR / "data"
 GROUP_CSV = DATA_DIR / "group_costing.csv"
 RM_CSV = DATA_DIR / "rm_price_master.csv"
 USERS_CSV = DATA_DIR / "users_default.csv"
-APP_VERSION = "2026-06-22-final-streamlit-buttons-no-logout-v4"
+APP_VERSION = "2026-06-22-final-streamlit-buttons-autofit-v5"
 
 MODULES = ["Cost Sheet", "Cost - Local", "Cost - Export", "Add Sort", "RM Price", "Users"]
 PERM = {
@@ -52,7 +52,7 @@ a.navbtn.active{background:#166fe5;color:white;border-color:#166fe5;}
 .sheet-head{background:#0b4f73;color:#fff;height:37px;display:flex;align-items:center;padding:0 10px;font-size:17px;font-weight:900;margin-top:3px}.sheet-head .sort{margin-left:auto;color:#fff200;font-size:18px;}
 .whatif{border:1px solid #a7b7c6;background:#f7fbff;padding:4px 8px;margin:0 0 2px 0}.whatif-title{font-size:13px;font-weight:900;color:#01223a;margin-bottom:4px}
 .table-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:3px}.tblbox{border:1px solid #b2c1cf;background:white}.tbltitle{background:#0b4f73;color:#fff;font-weight:900;padding:5px 9px;font-size:13px}.rbmtable{width:100%;border-collapse:collapse;font-size:12px;font-weight:700}.rbmtable td{border:1px solid #333;padding:4px 7px}.rbmtable td:nth-child(2){font-weight:700}.row-green td{background:#91f0a0}.row-red td:first-child{background:#ff5555;color:white}.row-red td:nth-child(2){background:#ffc7c7}.row-yellow td{background:#fff3b5}.row-blue td{background:#eef6ff}.footer{position:fixed;bottom:0;left:0;right:0;background:#0b4f73;color:#fff;padding:8px 20px;font-size:13px;font-weight:800;display:flex;justify-content:space-between;z-index:10}.footer b{color:#ffe600}.content-pad{padding-bottom:28px}
-.stButton button{height:38px;padding:2px 8px;font-weight:800;border-radius:4px;margin:0!important}.stSelectbox label,.stNumberInput label,.stTextInput label{font-weight:800;color:#001b34;font-size:12px!important}.stSelectbox div,.stTextInput input,.stNumberInput input{font-size:13px!important}.stNumberInput button{height:32px!important;min-height:32px!important}.warn{background:#fde9ed;color:#9b1230;padding:10px;border-radius:6px;margin:10px 0}.ok{background:#e8fff0;color:#006a24;padding:10px;border-radius:6px;margin:10px 0}
+.stButton button{height:30px!important;min-height:30px!important;padding:0 6px!important;font-weight:800;border-radius:4px;margin:0!important;white-space:nowrap!important;font-size:11px!important;line-height:1!important}.stSelectbox label,.stNumberInput label,.stTextInput label{font-weight:800;color:#001b34;font-size:12px!important}.stSelectbox div,.stTextInput input,.stNumberInput input{font-size:13px!important}.stNumberInput button{height:32px!important;min-height:32px!important}.warn{background:#fde9ed;color:#9b1230;padding:10px;border-radius:6px;margin:10px 0}.ok{background:#e8fff0;color:#006a24;padding:10px;border-radius:6px;margin:10px 0}
 .stButton button[kind="primary"]{background:#ff4d4d!important;border-color:#ff4d4d!important;color:white!important}
 @media(max-width:1000px){.rbm-top{height:auto;flex-wrap:wrap;padding:8px}.titlebox{width:220px;height:42px}.nav{justify-content:flex-start;overflow-x:auto}.card-row,.table-grid{grid-template-columns:1fr}.top-actions{flex-wrap:wrap}.footer{position:static}.control-strip{flex-wrap:wrap}a.navbtn{padding:8px 11px;font-size:13px}}
 </style>
@@ -218,7 +218,7 @@ def header(title="Costing"):
     # Compact button row directly under dark-blue header. These are real Streamlit
     # buttons, not HTML links; session_state remains alive on every module click.
     if visible:
-        cols = st.columns([1]*len(visible)+[0.9], gap="small")
+        cols = st.columns([max(0.72, min(1.05, 0.42 + len(m)*0.045)) for m in visible] + [0.68], gap="small")
         for i, m in enumerate(visible):
             btn_type = "primary" if st.session_state.get("module") == m else "secondary"
             if cols[i].button(m, key=f"nav_btn_{m}", type=btn_type, use_container_width=True):
