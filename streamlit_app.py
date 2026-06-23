@@ -41,19 +41,57 @@ st.markdown("""
 .sync,.on{border-radius:4px;padding:7px 9px;color:#fff;font-weight:900;font-size:10px}.sync{background:#0ab052}.on{background:#087e20}
 .userbox{text-align:right;font-size:11px;font-weight:900;min-width:165px;}
 /* Real Streamlit buttons moved into top dark-blue header. No anchor URL, no logout issue. */
+/* TOP MODULE BUTTONS - AUTO-FIT / COMPACT
+   Buttons stay in the dark-blue header, do not take equal big column width. */
 div:has(> .rbm-nav-anchor) + div[data-testid="stHorizontalBlock"]{
-  margin-top:-52px!important; margin-left:150px!important; width:790px!important;
-  position:relative!important; z-index:50!important; align-items:center!important; padding:0!important;
+  margin-top:-54px!important;
+  margin-left:155px!important;
+  width:calc(100% - 470px)!important;
+  max-width:880px!important;
+  position:relative!important;
+  z-index:50!important;
+  display:flex!important;
+  flex-wrap:nowrap!important;
+  gap:10px!important;
+  align-items:center!important;
+  padding:0!important;
+  overflow:hidden!important;
+}
+div:has(> .rbm-nav-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]{
+  flex:0 0 auto!important;
+  width:auto!important;
+  min-width:0!important;
+  padding:0!important;
+}
+div:has(> .rbm-nav-anchor) + div[data-testid="stHorizontalBlock"] .stButton{
+  width:auto!important;
 }
 div:has(> .rbm-nav-anchor) + div[data-testid="stHorizontalBlock"] .stButton button{
-  height:30px!important; min-height:30px!important; padding:0 6px!important; margin:0!important;
-  border-radius:4px!important; font-size:11px!important; font-weight:900!important; white-space:nowrap!important;
-  box-shadow:0 1px 2px rgba(0,0,0,.18)!important; line-height:1!important;
+  width:auto!important;
+  min-width:118px!important;
+  max-width:150px!important;
+  height:28px!important;
+  min-height:28px!important;
+  padding:0 14px!important;
+  margin:0!important;
+  border-radius:2px!important;
+  font-size:11px!important;
+  font-weight:900!important;
+  white-space:nowrap!important;
+  box-shadow:none!important;
+  line-height:1!important;
 }
 div:has(> .rbm-nav-anchor) + div[data-testid="stHorizontalBlock"] .stButton button[kind="primary"]{
-  background:#166fe5!important; border-color:#166fe5!important; color:#fff!important;
+  background:#ff4d4d!important;
+  border-color:#ff4d4d!important;
+  color:#fff!important;
 }
-div:has(> .rbm-nav-anchor) + div[data-testid="stHorizontalBlock"] + div{margin-top:-2px!important;}
+div:has(> .rbm-nav-anchor) + div[data-testid="stHorizontalBlock"] .stButton button[kind="secondary"]{
+  background:#ffffff!important;
+  border-color:#d6d6d6!important;
+  color:#102030!important;
+}
+div:has(> .rbm-nav-anchor) + div[data-testid="stHorizontalBlock"] + div{margin-top:-5px!important;}
 .login-wrap{max-width:470px;margin:34px auto 0 auto;border:1px solid #b8cfe2;border-radius:8px;padding:18px 22px;background:#f8fcff;box-shadow:0 4px 14px rgba(0,0,0,.12)}
 .login-title{text-align:center;color:#0b4f73;font-size:24px;font-weight:900;margin-bottom:6px}.login-sub{text-align:center;color:#234;font-size:13px;font-weight:700;margin-bottom:10px}
 .control-strip{background:#dedbd5;padding:4px 8px;display:flex;align-items:center;gap:6px;white-space:nowrap;}
@@ -232,14 +270,14 @@ def header(title="Costing"):
     if visible:
         st.markdown('<span class="rbm-nav-anchor"></span>', unsafe_allow_html=True)
         labels = visible + ["Logout"]
-        # tight side-by-side spacing; smaller weights keep buttons compact
-        cols = st.columns([0.86]*len(visible)+[0.72], gap="small")
+        # Auto-fit buttons: use_container_width=False + CSS makes every button only as wide as needed.
+        cols = st.columns(len(labels), gap="small")
         for i, m in enumerate(visible):
             btn_type = "primary" if st.session_state.get("module") == m else "secondary"
-            if cols[i].button(m, key=f"nav_btn_{m}", type=btn_type, use_container_width=True):
+            if cols[i].button(m, key=f"nav_btn_{m}", type=btn_type, use_container_width=False):
                 st.session_state.module = m
                 st.rerun()
-        if cols[-1].button("Logout", key="nav_logout_btn", use_container_width=True):
+        if cols[-1].button("Logout", key="nav_logout_btn", use_container_width=False):
             do_logout(); st.rerun()
 
 def login_page():
