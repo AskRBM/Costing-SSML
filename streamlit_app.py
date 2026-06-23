@@ -15,7 +15,7 @@ DATA_DIR = BASE_DIR / "data"
 GROUP_CSV = DATA_DIR / "group_costing.csv"
 RM_CSV = DATA_DIR / "rm_price_master.csv"
 USERS_CSV = DATA_DIR / "users_default.csv"
-APP_VERSION = "2026-06-22-final-no-url-nav-calc-v3"
+APP_VERSION = "2026-06-22-final-streamlit-buttons-no-logout-v4"
 
 MODULES = ["Cost Sheet", "Cost - Local", "Cost - Export", "Add Sort", "RM Price", "Users"]
 PERM = {
@@ -52,7 +52,8 @@ a.navbtn.active{background:#166fe5;color:white;border-color:#166fe5;}
 .sheet-head{background:#0b4f73;color:#fff;height:37px;display:flex;align-items:center;padding:0 10px;font-size:17px;font-weight:900;margin-top:3px}.sheet-head .sort{margin-left:auto;color:#fff200;font-size:18px;}
 .whatif{border:1px solid #a7b7c6;background:#f7fbff;padding:4px 8px;margin:0 0 2px 0}.whatif-title{font-size:13px;font-weight:900;color:#01223a;margin-bottom:4px}
 .table-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:3px}.tblbox{border:1px solid #b2c1cf;background:white}.tbltitle{background:#0b4f73;color:#fff;font-weight:900;padding:5px 9px;font-size:13px}.rbmtable{width:100%;border-collapse:collapse;font-size:12px;font-weight:700}.rbmtable td{border:1px solid #333;padding:4px 7px}.rbmtable td:nth-child(2){font-weight:700}.row-green td{background:#91f0a0}.row-red td:first-child{background:#ff5555;color:white}.row-red td:nth-child(2){background:#ffc7c7}.row-yellow td{background:#fff3b5}.row-blue td{background:#eef6ff}.footer{position:fixed;bottom:0;left:0;right:0;background:#0b4f73;color:#fff;padding:8px 20px;font-size:13px;font-weight:800;display:flex;justify-content:space-between;z-index:10}.footer b{color:#ffe600}.content-pad{padding-bottom:28px}
-.stButton button{height:34px;padding:2px 8px;font-weight:800;border-radius:4px;margin:0!important}.stSelectbox label,.stNumberInput label,.stTextInput label{font-weight:800;color:#001b34;font-size:12px!important}.stSelectbox div,.stTextInput input,.stNumberInput input{font-size:13px!important}.stNumberInput button{height:32px!important;min-height:32px!important}.warn{background:#fde9ed;color:#9b1230;padding:10px;border-radius:6px;margin:10px 0}.ok{background:#e8fff0;color:#006a24;padding:10px;border-radius:6px;margin:10px 0}
+.stButton button{height:38px;padding:2px 8px;font-weight:800;border-radius:4px;margin:0!important}.stSelectbox label,.stNumberInput label,.stTextInput label{font-weight:800;color:#001b34;font-size:12px!important}.stSelectbox div,.stTextInput input,.stNumberInput input{font-size:13px!important}.stNumberInput button{height:32px!important;min-height:32px!important}.warn{background:#fde9ed;color:#9b1230;padding:10px;border-radius:6px;margin:10px 0}.ok{background:#e8fff0;color:#006a24;padding:10px;border-radius:6px;margin:10px 0}
+.stButton button[kind="primary"]{background:#ff4d4d!important;border-color:#ff4d4d!important;color:white!important}
 @media(max-width:1000px){.rbm-top{height:auto;flex-wrap:wrap;padding:8px}.titlebox{width:220px;height:42px}.nav{justify-content:flex-start;overflow-x:auto}.card-row,.table-grid{grid-template-columns:1fr}.top-actions{flex-wrap:wrap}.footer{position:static}.control-strip{flex-wrap:wrap}a.navbtn{padding:8px 11px;font-size:13px}}
 </style>
 """, unsafe_allow_html=True)
@@ -191,10 +192,9 @@ def has_perm(module:str)->bool:
     return str(r.get(key,"False")).lower() in ("true","1","yes")
 
 # ---------- UI ----------
-def nav_url(m:str)->str:
-    return "?module=" + m.replace(" ", "%20")
-
 def set_module(m:str):
+    # Pure Streamlit button navigation. No URL query parameters are used,
+    # so clicking module buttons cannot destroy the login session.
     st.session_state.module = m
 
 def do_logout():
@@ -204,31 +204,28 @@ def do_logout():
     st.session_state.module="Cost Sheet"
 
 def header(title="Costing"):
-    # Read module from query params only after successful login. This gives top blue HTML buttons
-    # without destroying Streamlit session, so module click must not logout.
-    try:
-        if st.session_state.logged_in and "logout" in st.query_params:
-            st.query_params.clear(); do_logout(); st.rerun()
-        if st.session_state.logged_in and "module" in st.query_params:
-            qm = st.query_params.get("module")
-            if isinstance(qm, list): qm = qm[0]
-            if qm in MODULES and has_perm(qm):
-                st.session_state.module = qm
-    except Exception:
-        pass
     role=html.escape(str(st.session_state.role or "")); user=html.escape(str(st.session_state.username or ""))
-    visible=[m for m in MODULES if has_perm(m)]
-    nav_html="".join([f'<a class="navbtn {"active" if st.session_state.get("module")==m else ""}" href="?module={html.escape(m).replace(" ", "%20")}">{html.escape(m)}</a>' for m in visible])
     st.markdown(f"""
 <div class="rbm-top">
   <div class="logo"><div class="big">RBM AI</div><div class="sub">Robotic Business Management</div></div>
   <div class="titlebox">{html.escape(title)}</div>
-  <div class="nav">{nav_html}</div>
+  <div style="flex:1"></div>
   <div class="top-actions"><span class="sync">☁ Sync Now</span><span class="on">⦿ ON</span></div>
   <div class="userbox">User: {user} | Role: {role}</div>
-  <a class="logout" href="?logout=1">↻ Logout</a>
 </div>
 """, unsafe_allow_html=True)
+    visible=[m for m in MODULES if has_perm(m)]
+    # Compact button row directly under dark-blue header. These are real Streamlit
+    # buttons, not HTML links; session_state remains alive on every module click.
+    if visible:
+        cols = st.columns([1]*len(visible)+[0.9], gap="small")
+        for i, m in enumerate(visible):
+            btn_type = "primary" if st.session_state.get("module") == m else "secondary"
+            if cols[i].button(m, key=f"nav_btn_{m}", type=btn_type, use_container_width=True):
+                st.session_state.module = m
+                st.rerun()
+        if cols[-1].button("Logout", key="nav_logout_btn", use_container_width=True):
+            do_logout(); st.rerun()
 
 def login_page():
     st.markdown("""
@@ -513,18 +510,6 @@ def users_page():
 if not st.session_state.logged_in:
     login_page()
     st.stop()
-
-# Apply requested module from the top blue nav links without logging out.
-try:
-    if "logout" in st.query_params:
-        st.query_params.clear(); do_logout(); st.rerun()
-    if "module" in st.query_params:
-        qm = st.query_params.get("module")
-        if isinstance(qm, list): qm = qm[0]
-        if qm in MODULES and has_perm(qm):
-            st.session_state.module = qm
-except Exception:
-    pass
 
 module=st.session_state.get("module","Cost Sheet")
 if not has_perm(module):
