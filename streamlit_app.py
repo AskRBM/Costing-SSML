@@ -267,25 +267,27 @@ def login_page():
 <div class="rbm-top"><div class="logo"><div class="big">RBM AI</div><div class="sub">Robotic Business Management</div></div><div class="titlebox">Costing</div></div>
 """, unsafe_allow_html=True)
     st.markdown('<div class="login-hero"><div class="login-title">Secure Client Login</div><div class="login-sub">RBM Textile Costing System</div><div class="login-badge">Siyaram\'s Costing DB</div></div>', unsafe_allow_html=True)
-    st.markdown('<div class="login-wrap">', unsafe_allow_html=True)
-    with st.form("login_form", clear_on_submit=False):
-        u=st.text_input("Username", value="admin", key="login_u")
-        p=st.text_input("Password", value="", type="password", key="login_p")
-        submitted=st.form_submit_button("Login", type="primary")
-    if submitted:
-        users=load_users()
-        if "username" in users.columns and "password" in users.columns:
-            m=users[(users["username"].astype(str).str.lower()==u.strip().lower()) & (users["password"].astype(str)==p.strip())]
-            if not m.empty:
-                st.session_state.logged_in=True
-                st.session_state.username=m.iloc[0]["username"]
-                st.session_state.role=m.iloc[0].get("role","User")
-                st.session_state.module="Cost Sheet"
-                try: st.query_params.clear()
-                except Exception: pass
-                st.rerun()
-        st.markdown('<div class="warn">Wrong username or password.</div>', unsafe_allow_html=True)
-    st.markdown('<div class="login-note">Publisher: CSTRBM TECH PVT LTD • Made in India</div></div>', unsafe_allow_html=True)
+    left, mid, right = st.columns([1.2, 1.0, 1.2])
+    with mid:
+        st.markdown('<div class="login-wrap">', unsafe_allow_html=True)
+        with st.form("login_form", clear_on_submit=False):
+            u=st.text_input("Username", value="admin", key="login_u")
+            p=st.text_input("Password", value="", type="password", key="login_p")
+            submitted=st.form_submit_button("Login", type="primary")
+        if submitted:
+            users=load_users()
+            if "username" in users.columns and "password" in users.columns:
+                m=users[(users["username"].astype(str).str.lower()==u.strip().lower()) & (users["password"].astype(str)==p.strip())]
+                if not m.empty:
+                    st.session_state.logged_in=True
+                    st.session_state.username=m.iloc[0]["username"]
+                    st.session_state.role=m.iloc[0].get("role","User")
+                    st.session_state.module="Cost Sheet"
+                    try: st.query_params.clear()
+                    except Exception: pass
+                    st.rerun()
+            st.markdown('<div class="warn">Wrong username or password.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="login-note">Publisher: CSTRBM TECH PVT LTD • Made in India</div></div>', unsafe_allow_html=True)
 
 # ---------- calculation ----------
 def derive_after_knitting_pct(row:Dict[str,Any])->float:
