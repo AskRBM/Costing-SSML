@@ -17,7 +17,7 @@ DATA_DIR = BASE_DIR / "data"
 GROUP_CSV = DATA_DIR / "group_costing.csv"
 RM_CSV = DATA_DIR / "rm_price_master.csv"
 USERS_CSV = DATA_DIR / "users_default.csv"
-APP_VERSION = "2026-06-23-online-supabase-live-sync-v5-force-supabase"
+APP_VERSION = "2026-06-23-online-supabase-specs-force-v6-no-cache"
 
 # Online app now reads live synced data from Supabase first.
 # IMPORTANT: Put these same values in Streamlit Cloud Secrets also.
@@ -119,10 +119,37 @@ def _sb_headers() -> Dict[str, str]:
         "Content-Type": "application/json",
     }
 
-@st.cache_data(show_spinner=False, ttl=20)
-def supabase_table_df(table: str, limit: int = 50000) -> pd.DataFrame:
-    """Read live synced Supabase table. If it fails, return empty and CSV fallback will work."""
+def _expand_json_data_column(df: pd.DataFrame) -> pd.DataFrame:
+    """Some sync tables may store original row inside a data/json column.
+    This expands that JSON so Sort No, STRUCTURE, GSM, WIDTH, etc. are available online.
+    """
+    if df.empty:
+        return df
+    if "data" not in df.columns:
+        return df
+    expanded=[]
+    for _, row in df.iterrows():
+        base=row.to_dict()
+        d=base.get("data", {})
+        if isinstance(d, str):
+            try:
+                d=json.loads(d)
+            except Exception:
+                d={}
+        if isinstance(d, dict):
+            for k,v in d.items():
+                base[k]=v
+        expanded.append(base)
+    out=pd.DataFrame(expanded).fillna("")
+    out.columns=[norm_col(c) for c in out.columns]
+    return out
+
+def supabase_table_df(table: str, limit: int = 100000) -> pd.DataFrame:
+    """Always read fresh live synced Supabase table. No Streamlit cache here,
+    because offline Sync Now must immediately reflect in online Sort No dropdown.
+    """
     if not supabase_enabled():
+        st.session_state[f"sb_error_{table}"] = "Supabase URL/key missing"
         return pd.DataFrame()
     try:
         url = f"{ONLINE_SUPABASE_URL}/rest/v1/{urllib.parse.quote(table)}?select=*&limit={int(limit)}"
@@ -134,11 +161,16 @@ def supabase_table_df(table: str, limit: int = 50000) -> pd.DataFrame:
             raw = resp.read().decode("utf-8", errors="ignore")
         data = json.loads(raw) if raw.strip() else []
         if not data:
+            st.session_state[f"sb_error_{table}"] = "Supabase returned 0 rows"
             return pd.DataFrame()
         df = pd.DataFrame(data).fillna("")
         df.columns = [norm_col(c) for c in df.columns]
+        df = _expand_json_data_column(df)
+        st.session_state[f"sb_error_{table}"] = ""
+        st.session_state[f"sb_count_{table}"] = len(df)
         return df
-    except Exception:
+    except Exception as e:
+        st.session_state[f"sb_error_{table}"] = str(e)
         return pd.DataFrame()
 
 # ---------- data helpers ----------
@@ -255,19 +287,24 @@ def group_sort_col(df:pd.DataFrame)->str:
     return df.columns[1] if len(df.columns)>1 else "dev_sorts"
 
 def sort_options()->List[str]:
-    # Combine Sort No from group_costing and specs so newly synced SPECS sorts appear online.
+    # Combine Sort No from live Supabase group_costing + live Supabase specs.
+    # This is the key fix: new Sort No added offline in SPECS appears online after Sync Now.
     vals=[]
     for df in [load_group(), load_specs()]:
         if df.empty:
             continue
-        possible=["dev_sorts","sort_no","sort"]
-        c=next((x for x in possible if x in df.columns), group_sort_col(df))
-        for v in df[c].astype(str).tolist():
-            v=v.strip()
-            if v and v not in vals:
-                vals.append(v)
+        possible=["dev_sorts","sort_no","sort","dev_sort","sorts"]
+        found_cols=[x for x in possible if x in df.columns]
+        if not found_cols:
+            # fallback: second column is Dev. Sorts in old SPECS CSV layout
+            found_cols=[group_sort_col(df)]
+        for c in found_cols:
+            for v in df[c].astype(str).tolist():
+                v=v.strip()
+                if v and v.lower() not in ("nan","none","dev_sorts","sort_no","sort") and v not in vals:
+                    vals.append(v)
     try:
-        return sorted(vals, key=lambda x:(not x.isdigit(), int(x) if x.isdigit() else x))
+        return sorted(vals, key=lambda x:(not x.isdigit(), int(float(x)) if str(x).replace('.0','').isdigit() else str(x)))
     except Exception:
         return vals
 
@@ -325,8 +362,12 @@ init_state()
 # Clear old What-If session values once after every new code upload.
 # This avoids stale browser session values changing the desktop-correct calculation.
 if st.session_state.get("_app_version") != APP_VERSION:
+    try:
+        st.cache_data.clear()
+    except Exception:
+        pass
     for _k in list(st.session_state.keys()):
-        if str(_k).startswith("wf_"):
+        if str(_k).startswith("wf_") or str(_k).startswith("sb_error_") or str(_k).startswith("sb_count_"):
             st.session_state.pop(_k, None)
     st.session_state["_app_version"] = APP_VERSION
 
