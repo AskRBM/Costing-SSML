@@ -17,7 +17,7 @@ DATA_DIR = BASE_DIR / "data"
 GROUP_CSV = DATA_DIR / "group_costing.csv"
 RM_CSV = DATA_DIR / "rm_price_master.csv"
 USERS_CSV = DATA_DIR / "users_default.csv"
-APP_VERSION = "2026-06-23-online-supabase-specs-force-v8-url-sanitized-debug-live"
+APP_VERSION = "2026-06-23-online-specs-calculation-v11"
 
 # Online app now reads live synced data from Supabase first.
 # IMPORTANT: Put these same values in Streamlit Cloud Secrets also.
@@ -408,6 +408,147 @@ FREIGHT_MASTER = {
 def freight_master_rows() -> List[tuple]:
     return [(country, rate) for country, rate in FREIGHT_MASTER.items()]
 
+
+
+def spec_col_to_product(col: str) -> str:
+    """Convert SPECS database column name to yarn/product name used in RM Price.
+    Example: 30s_kcw -> 30S KCW, 100_d -> 100 D.
+    """
+    c = str(col or "").strip().lower()
+    c = c.replace("col_", "")
+    c = c.replace("_", " ").replace("-", " ").strip()
+    c = " ".join(c.split())
+    out = c.upper()
+    # common textile spellings
+    out = out.replace(" KCW", " KCW").replace(" CCW", " CCW")
+    out = out.replace(" D", " D")
+    return out
+
+def rm_price_lookup(product: str, particular: str = "") -> float:
+    """Find RM price by product/yarn name. Particular is optional because
+    online SPECS synced columns may not have Excel row-1 group names.
+    """
+    try:
+        df = load_rm()
+        if df.empty:
+            return 0.0
+        prod_norm = str(product or "").strip().upper().replace("  ", " ")
+        part_norm = str(particular or "").strip().upper()
+        if not prod_norm:
+            return 0.0
+        price_col = "price_numeric" if "price_numeric" in df.columns else ("price" if "price" in df.columns else "")
+        if not price_col:
+            return 0.0
+        if "product" in df.columns:
+            pdf = df[df["product"].astype(str).str.strip().str.upper() == prod_norm]
+            if not pdf.empty:
+                if part_norm and "particulars" in pdf.columns:
+                    pdf2 = pdf[pdf["particulars"].astype(str).str.strip().str.upper() == part_norm]
+                    if not pdf2.empty:
+                        return to_float(pdf2.iloc[0].get(price_col), 0)
+                return to_float(pdf.iloc[0].get(price_col), 0)
+        return 0.0
+    except Exception:
+        return 0.0
+
+def specs_cost_row_from_specs(spec_row: Dict[str, Any], sort_no: str) -> Dict[str, Any]:
+    """Build Cost Sheet calculation for a sort that exists only in SPECS.
+    This prevents new synced sorts (1202/1203 etc.) from showing blank calculation.
+    Priority: use local_cost/sales_price from SPECS when available, otherwise calculate from RM price.
+    """
+    r = dict(spec_row or {})
+    gsm = to_float(getv(r, "finish_gsm", "gsm"), 0)
+    width = to_float(getv(r, "finish_width", "finish_widt", "width"), 0)
+    local_cost = to_float(getv(r, "local_cost", "price_per_kg_inr", "costing"), 0)
+    sales_price = to_float(getv(r, "sales_price", "selling_price", "price"), 0)
+    export_usd = to_float(getv(r, "price_usdkg", "total_cost_usd__kg", "export_price_fc"), 0)
+
+    skip = {
+        "sync_row_id","sr_no","dev_sorts","sort_no","sort","dev_sort","sorts","structure",
+        "finish_gsm","finish_width","finish_widt","gsm","width","local_cost","sales_price",
+        "selling_price","price","price_per_kg_inr","costing","export_cost_inr","export_price_fc",
+        "price_usdkg","price_usdmtrs","price_usdyds","total_cost_usd__kg","total_cost_pricefreightcomlc_int_inr__kg",
+        "created_at","updated_at","data"
+    }
+    raw_from_rm = 0.0
+    for col, val in r.items():
+        c = norm_col(col)
+        if c in skip:
+            continue
+        pct = to_float(val, 0)
+        if abs(pct) < 0.000001 or pct > 1000:
+            continue
+        product = spec_col_to_product(c)
+        price = rm_price_lookup(product)
+        if price:
+            raw_from_rm += price * pct / 100.0
+
+    knitting = 90.0
+    waste_after_pct = 10.0
+
+    if raw_from_rm > 0:
+        raw_material = raw_from_rm
+        base_cost = raw_material + knitting
+        waste_after_amt = base_cost * waste_after_pct / 100.0
+        costing = base_cost + waste_after_amt
+        price_per_kg = local_cost if local_cost else costing
+        selling = sales_price if sales_price else price_per_kg
+    else:
+        # If RM matching is not possible, reverse-calculate from synced Local Cost so rows are not blank.
+        price_per_kg = local_cost if local_cost else (sales_price if sales_price else 0)
+        costing = price_per_kg
+        base_cost = costing / (1 + waste_after_pct / 100.0) if costing else 0
+        raw_material = max(base_cost - knitting, 0) if base_cost else 0
+        waste_after_amt = base_cost * waste_after_pct / 100.0 if base_cost else 0
+        selling = sales_price if sales_price else price_per_kg
+
+    margin = max(selling - costing, 0) if selling and costing else 0
+    margin_pct = (margin / costing * 100.0) if costing else 10.0
+    currency = 87.0
+    freight = 15.0
+    commission_pct = 5.0
+    commission = price_per_kg * commission_pct / 100.0 if price_per_kg else 0
+    total_inr = price_per_kg + freight + commission
+    total_usd = export_usd if export_usd else (total_inr / currency if currency else 0)
+    width_inch = width / 2.54 if width else 0
+
+    return {
+        "dev_sorts": clean_sort_value(sort_no),
+        "sort_no": clean_sort_value(sort_no),
+        "structure": getv(r, "structure"),
+        "finish_gsm": gsm,
+        "finish_width": width,
+        "width_cms": width,
+        "width_inch": width_inch,
+        "weight_gsm": gsm,
+        "cotton_yarn_costing": round(raw_material, 2) if raw_material else "",
+        "wastage": 0,
+        "dyeing_cost_rs": 0,
+        "dyed_yarn_cost_rs": round(raw_material, 2) if raw_material else "",
+        "cotton_dyed_proportion_cost": round(raw_material, 2) if raw_material else "",
+        "polyester_cost": "",
+        "spandex_cost": "",
+        "kora_yarn_cost": "",
+        "raw_material_cost": round(raw_material, 2) if raw_material else "",
+        "knittng__processing_cost": knitting,
+        "wastage_after_knitting_pct": waste_after_pct,
+        "wastage_2": round(waste_after_amt, 2) if waste_after_amt else "",
+        "costing": round(costing, 2) if costing else "",
+        "margin": round(margin, 2) if margin else "",
+        "margin_pct": round(margin_pct, 2) if margin_pct else 10,
+        "selling_price": round(selling, 2) if selling else "",
+        "price_per_kg_inr": round(price_per_kg, 2) if price_per_kg else "",
+        "currency_rate": currency,
+        "discount_if_any": 0,
+        "freight_inr_per_kg": freight,
+        "commission_pct": commission_pct,
+        "commission": round(commission, 2) if commission else "",
+        "lc_days_interest": 0,
+        "total_cost_pricefreightcomlc_int_inr__kg": round(total_inr, 2) if total_inr else "",
+        "total_cost_usd__kg": round(total_usd, 2) if total_usd else "",
+        "price_usdkg": round(total_usd, 2) if total_usd else "",
+    }
+
 def get_sort_row(sort_no:str)->Dict[str,Any]:
     target=clean_sort_value(sort_no)
     df=load_group()
@@ -427,20 +568,7 @@ def get_sort_row(sort_no:str)->Dict[str,Any]:
             m=pd.DataFrame()
         if not m.empty:
             r=m.iloc[0].to_dict()
-            return {
-                "dev_sorts": str(sort_no),
-                "sort_no": str(sort_no),
-                "structure": getv(r,"structure","STRUCTURE"),
-                "finish_gsm": getv(r,"finish_gsm","FINISH GSM"),
-                "finish_width": getv(r,"finish_width","FINISH WIDTH"),
-                "selling_price": getv(r,"selling_price","sales_price","local_cost"),
-                "price_per_kg_inr": getv(r,"price_per_kg_inr","local_cost","sales_price"),
-                "currency_rate": 87,
-                "discount_if_any": 0,
-                "freight_inr_per_kg": 15,
-                "commission_pct": 5,
-                "lc_days_interest": 0,
-            }
+            return specs_cost_row_from_specs(r, target)
     return {}
 
 # ---------- role/session ----------
