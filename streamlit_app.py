@@ -379,7 +379,6 @@ def cost_sheet_page():
     applied = st.session_state.get(wf_key)
     row = apply_whatif(base, applied) if applied else base
 
-    st.markdown(f'<div class="sheet-head"><span>RBM TEXTILE COST SHEET</span><span class="sort">SORT NO: {html.escape(str(sort))}</span></div>', unsafe_allow_html=True)
     with st.form(f"whatif_form_{sort}", clear_on_submit=False):
         st.markdown('<div class="whatif-title">What-If Analysis</div>', unsafe_allow_html=True)
         cols=st.columns(9, gap="small")
