@@ -556,24 +556,44 @@ def users_page():
         st.error("You do not have permission for User Management."); return
     st.markdown('<div class="sheet-head"><span>User Management</span></div>', unsafe_allow_html=True)
     df=load_users()
+
+    # Edit existing user option
+    edit_df = df.copy()
+    if st.session_state.role != "Developer" and 'role' in edit_df.columns:
+        edit_df = edit_df[edit_df['role'].astype(str) != "Developer"]
+    existing_users = [str(x) for x in edit_df.get('username', pd.Series(dtype=str)).dropna().tolist() if str(x).strip()]
+    edit_choice = st.selectbox("Edit Existing User", ["Create New User"] + existing_users, key="edit_existing_user")
+    edit_row = {}
+    if edit_choice != "Create New User" and 'username' in df.columns:
+        m = df[df['username'].astype(str).str.lower() == edit_choice.lower()]
+        if not m.empty:
+            edit_row = m.iloc[0].to_dict()
+
     with st.form("user_form"):
         c1,c2,c3=st.columns(3, gap="small")
-        username=c1.text_input("Username")
-        password=c2.text_input("Password")
+        username=c1.text_input("Username", value=str(edit_row.get('username','')), disabled=(edit_choice != "Create New User"))
+        password=c2.text_input("Password", value=str(edit_row.get('password','')))
         role_options=["Admin","User"] if st.session_state.role!="Developer" else ["Admin","User","Developer"]
-        role=c3.selectbox("Role", role_options)
+        default_role = str(edit_row.get('role', 'User' if edit_choice != "Create New User" else 'Admin'))
+        role_index = role_options.index(default_role) if default_role in role_options else 0
+        role=c3.selectbox("Role", role_options, index=role_index)
         pcols=st.columns(7, gap="small")
         vals={}
         for i,(m,k) in enumerate([(m,PERM[m]) for m in MODULES]):
-            if m=="Users" and role=="User": vals[k]=False
-            else: vals[k]=pcols[i].checkbox(m, value=(role in ["Admin","Developer"]))
-        save=st.form_submit_button("Save User", type="primary")
-        if save:
-            if not username or not password: st.error("Username and Password required.")
+            saved_val = str(edit_row.get(k, "False")).lower() in ("true","1","yes") if edit_row else (role in ["Admin","Developer"])
+            if m=="Users" and role=="User":
+                vals[k]=False
             else:
-                row={'username':username,'password':password,'role':role, **{k:v for k,v in vals.items()}, 'can_edit_sort': vals.get('can_add_sort',False), 'can_delete_sort': vals.get('can_add_sort',False), 'created_at':datetime.now().isoformat()}
-                df=df[df['username'].astype(str).str.lower()!=username.lower()] if 'username' in df.columns else df
-                df=pd.concat([df,pd.DataFrame([row])],ignore_index=True); save_users(df); st.success("User saved.")
+                vals[k]=pcols[i].checkbox(m, value=saved_val, key=f"perm_{k}_{edit_choice}")
+        save=st.form_submit_button("Update User" if edit_choice != "Create New User" else "Save User", type="primary")
+        if save:
+            final_username = edit_choice if edit_choice != "Create New User" else username
+            if not final_username or not password: st.error("Username and Password required.")
+            else:
+                old_created = edit_row.get('created_at', datetime.now().isoformat()) if edit_row else datetime.now().isoformat()
+                row={'username':final_username,'password':password,'role':role, **{k:v for k,v in vals.items()}, 'can_edit_sort': vals.get('can_add_sort',False), 'can_delete_sort': vals.get('can_add_sort',False), 'created_at':old_created}
+                df=df[df['username'].astype(str).str.lower()!=str(final_username).lower()] if 'username' in df.columns else df
+                df=pd.concat([df,pd.DataFrame([row])],ignore_index=True); save_users(df); st.success("User updated." if edit_choice != "Create New User" else "User saved.")
     show=df.copy()
     if st.session_state.role!="Developer" and 'role' in show.columns:
         show=show[show['role'].astype(str)!="Developer"]
