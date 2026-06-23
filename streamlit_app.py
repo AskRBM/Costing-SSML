@@ -16,7 +16,7 @@ DATA_DIR = BASE_DIR / "data"
 GROUP_CSV = DATA_DIR / "group_costing.csv"
 RM_CSV = DATA_DIR / "rm_price_master.csv"
 USERS_CSV = DATA_DIR / "users_default.csv"
-APP_VERSION = "2026-06-23-print-export-freight-fixed-v2"
+APP_VERSION = "2026-06-23-login-first-allowed-module-v3"
 
 MODULES = ["Cost Sheet", "Cost - Local", "Cost - Export", "Add Sort", "RM Price", "Users"]
 PERM = {
@@ -221,6 +221,14 @@ def has_perm(module:str)->bool:
     key=PERM.get(module, "")
     return str(r.get(key,"False")).lower() in ("true","1","yes")
 
+
+def first_allowed_module()->str:
+    """Return first module allowed for current user.
+    If user has only Cost - Export or only Cost - Local, login opens that module.
+    """
+    visible = [m for m in MODULES if has_perm(m)]
+    return visible[0] if visible else "Cost Sheet"
+
 # ---------- UI ----------
 def set_module(m:str):
     # Pure Streamlit button navigation. No URL query parameters are used,
@@ -282,7 +290,7 @@ def login_page():
                     st.session_state.logged_in=True
                     st.session_state.username=m.iloc[0]["username"]
                     st.session_state.role=m.iloc[0].get("role","User")
-                    st.session_state.module="Cost Sheet"
+                    st.session_state.module=first_allowed_module()
                     try: st.query_params.clear()
                     except Exception: pass
                     st.rerun()
@@ -713,7 +721,7 @@ if not st.session_state.logged_in:
 
 module=st.session_state.get("module","Cost Sheet")
 if not has_perm(module):
-    module="Cost Sheet"
+    module=first_allowed_module()
     st.session_state.module=module
 
 if module=="Cost Sheet": cost_sheet_page()
