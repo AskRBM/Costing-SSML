@@ -17,18 +17,37 @@ DATA_DIR = BASE_DIR / "data"
 GROUP_CSV = DATA_DIR / "group_costing.csv"
 RM_CSV = DATA_DIR / "rm_price_master.csv"
 USERS_CSV = DATA_DIR / "users_default.csv"
-APP_VERSION = "2026-06-23-online-supabase-live-sync-v4"
+APP_VERSION = "2026-06-23-online-supabase-live-sync-v5-force-supabase"
 
 # Online app now reads live synced data from Supabase first.
-# Keep these in Streamlit Cloud secrets or environment variables.
-# If not found, app automatically falls back to GitHub CSV files.
-ONLINE_SUPABASE_URL = str(st.secrets.get("RBM_SUPABASE_URL", os.environ.get("RBM_SUPABASE_URL", "https://mmzvwlitakluttlnnioh.supabase.co"))).strip().rstrip("/")
-ONLINE_SUPABASE_KEY = str(st.secrets.get("RBM_SUPABASE_KEY", os.environ.get("RBM_SUPABASE_KEY", ""))).strip()
-if not ONLINE_SUPABASE_KEY:
-    try:
-        ONLINE_SUPABASE_KEY = str(st.secrets.get("SUPABASE_KEY", "")).strip()
-    except Exception:
-        ONLINE_SUPABASE_KEY = ""
+# IMPORTANT: Put these same values in Streamlit Cloud Secrets also.
+# This code also has a publishable-key fallback so online data loads even when GitHub CSV is old.
+def _secret_or_env(*names: str, default: str = "") -> str:
+    for name in names:
+        try:
+            v = st.secrets.get(name, None)
+            if v is not None and str(v).strip():
+                return str(v).strip()
+        except Exception:
+            pass
+        try:
+            v = os.environ.get(name, "")
+            if str(v).strip():
+                return str(v).strip()
+        except Exception:
+            pass
+    return default
+
+ONLINE_SUPABASE_URL = _secret_or_env(
+    "RBM_SUPABASE_URL", "SUPABASE_URL", "supabase_url",
+    default="https://mmzvwlitakluttlnnioh.supabase.co"
+).strip().rstrip("/")
+
+# Use publishable/anon key for Streamlit online read. Do NOT use service-role key in public GitHub.
+ONLINE_SUPABASE_KEY = _secret_or_env(
+    "RBM_SUPABASE_KEY", "SUPABASE_KEY", "SUPABASE_ANON_KEY", "supabase_key",
+    default="sb_publishable_OcHaa48FL57wRoRohD6IsQ_7pCJd6LB"
+).strip()
 
 MODULES = ["Cost Sheet", "Cost - Local", "Cost - Export", "Add Sort", "RM Price", "Users"]
 PERM = {
@@ -107,7 +126,10 @@ def supabase_table_df(table: str, limit: int = 50000) -> pd.DataFrame:
         return pd.DataFrame()
     try:
         url = f"{ONLINE_SUPABASE_URL}/rest/v1/{urllib.parse.quote(table)}?select=*&limit={int(limit)}"
-        req = urllib.request.Request(url, headers=_sb_headers(), method="GET")
+        headers = _sb_headers()
+        headers["Range-Unit"] = "items"
+        headers["Range"] = f"0-{int(limit)-1}"
+        req = urllib.request.Request(url, headers=headers, method="GET")
         with urllib.request.urlopen(req, timeout=30) as resp:
             raw = resp.read().decode("utf-8", errors="ignore")
         data = json.loads(raw) if raw.strip() else []
