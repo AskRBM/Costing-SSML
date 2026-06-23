@@ -62,7 +62,9 @@ a.navbtn.active{background:#166fe5;color:white;border-color:#166fe5;}
 .mini-kpi{height:29px;color:white;font-weight:900;display:flex;align-items:center;justify-content:center;padding:0 7px;font-size:10px;white-space:nowrap;border-radius:4px;line-height:1.05;text-align:center;}
 .mini-kpi b{margin-right:5px;}
 .top-sort-only{margin-left:auto;color:#fff200;font-size:14px;font-weight:900;white-space:nowrap;padding:0 10px;}
-.nav-line-holder .stButton button{width:auto!important;min-width:max-content!important;padding:0 12px!important;}
+.nav-line-holder .stButton button{width:100%!important;min-width:max-content!important;padding:0 10px!important;}
+.nav-line-holder [data-testid="column"]{width:auto!important;min-width:fit-content!important;flex:0 0 auto!important;}
+.nav-line-holder{margin-top:2px!important;margin-bottom:2px!important;}
 .control-one-line{border:1px solid #c5d6e3;border-radius:4px;background:#f7fbff;padding:6px 8px;margin:4px 0 6px 0;}
 .country-inline-label{font-size:12px;font-weight:900;color:#001b34;padding-top:8px;}
 
@@ -236,7 +238,15 @@ def header(title="Costing"):
         except Exception:
             r = {}
         st.markdown('<div class="nav-line-holder">', unsafe_allow_html=True)
-        cols = st.columns([0.70,0.68,0.70,0.72,0.62] + [0.82]*len(visible) + [0.72], gap="small")
+        # Same line: module buttons first, summary boxes after it. Width is based on text size.
+        module_weights = [max(0.62, min(0.98, 0.38 + len(m) * 0.045)) for m in visible]
+        cols = st.columns(module_weights + [0.66,0.70,0.76,0.76,0.66], gap="small")
+        for i, m in enumerate(visible):
+            btn_type = "primary" if st.session_state.get("module") == m else "secondary"
+            if cols[i].button(m, key=f"nav_btn_{m}", type=btn_type, use_container_width=True):
+                st.session_state.module = m
+                st.rerun()
+        offset = len(visible)
         kpi_html = [
             f'<div class="mini-kpi k1"><b>Structure</b>{html.escape(fmt(getv(r,"structure")))}</div>',
             f'<div class="mini-kpi k2"><b>Finish GSM</b>{html.escape(fmt(getv(r,"finish_gsm")))}</div>',
@@ -245,15 +255,7 @@ def header(title="Costing"):
             f'<div class="mini-kpi k5"><b>USD/KG</b>{html.escape(fmt(getv(r,"total_cost_usd__kg","price_usdkg")))}</div>',
         ]
         for i, h in enumerate(kpi_html):
-            cols[i].markdown(h, unsafe_allow_html=True)
-        offset = 5
-        for i, m in enumerate(visible):
-            btn_type = "primary" if st.session_state.get("module") == m else "secondary"
-            if cols[offset+i].button(m, key=f"nav_btn_{m}", type=btn_type, use_container_width=True):
-                st.session_state.module = m
-                st.rerun()
-        if cols[offset+len(visible)].button("Logout", key="nav_logout_btn", use_container_width=True):
-            do_logout(); st.rerun()
+            cols[offset+i].markdown(h, unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
 def login_page():
@@ -370,7 +372,7 @@ def cost_sheet_page():
 
     # One straight compact line: Sort + Refresh + Print + Export + Country + Apply + Freight + Clear
     with st.form(f"whatif_form_{selected}", clear_on_submit=False):
-        c0,c1,c2,c3,c4,c5,c6,c7,c8,c9=st.columns([1.35,2.0,0.65,0.95,1.10,0.12,0.65,1.25,0.65,0.95], gap="small")
+        c0,c1,c2,c3,c4,c5,c6,c7,c8,c9,c10=st.columns([1.22,1.55,0.60,0.90,1.05,0.10,0.55,1.05,0.58,0.92,0.55], gap="small")
         with c0: st.markdown('<div class="label">Sort No (Excel D1):</div>', unsafe_allow_html=True)
         with c1:
             sort=st.selectbox("Sort No", sorts, index=sorts.index(selected), label_visibility="collapsed")
@@ -382,9 +384,7 @@ def cost_sheet_page():
         with c7: st.selectbox("Country", ["Bangladesh","Vietnam","Sri Lanka","Japan","USA","UAE"], index=0, label_visibility="collapsed")
         with c8: submitted=st.form_submit_button("Apply", type="primary")
         with c9: freight_clicked=st.form_submit_button("Freight Master")
-        # Clear button goes just after Freight in a small inline column below if screen width is tight
-        clear_col, blank_col = st.columns([0.55,9.45], gap="small")
-        with clear_col: cleared=st.form_submit_button("Clear")
+        with c10: cleared=st.form_submit_button("Clear")
 
         base=get_sort_row(sort)
         if not base:
