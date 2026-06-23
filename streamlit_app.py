@@ -16,7 +16,7 @@ DATA_DIR = BASE_DIR / "data"
 GROUP_CSV = DATA_DIR / "group_costing.csv"
 RM_CSV = DATA_DIR / "rm_price_master.csv"
 USERS_CSV = DATA_DIR / "users_default.csv"
-APP_VERSION = "2026-06-23-final-picture-layout-v1"
+APP_VERSION = "2026-06-23-print-export-freight-fixed-v2"
 
 MODULES = ["Cost Sheet", "Cost - Local", "Cost - Export", "Add Sort", "RM Price", "Users"]
 PERM = {
@@ -166,6 +166,18 @@ def sort_options()->List[str]:
         return sorted(vals, key=lambda x:(not x.isdigit(), int(x) if x.isdigit() else x))
     except Exception:
         return vals
+
+FREIGHT_MASTER = {
+    "Bangladesh": 15.0,
+    "Vietnam": 20.0,
+    "Sri Lanka": 18.0,
+    "Japan": 45.0,
+    "USA": 55.0,
+    "UAE": 35.0,
+}
+
+def freight_master_rows() -> List[tuple]:
+    return [(country, rate) for country, rate in FREIGHT_MASTER.items()]
 
 def get_sort_row(sort_no:str)->Dict[str,Any]:
     df=load_group()
@@ -369,10 +381,35 @@ def rows_to_df(rows:List[tuple]) -> pd.DataFrame:
     return pd.DataFrame([{"Particulars": str(a), "Value": fmt(b)} for a,b in rows])
 
 def rows_to_excel_bytes(sheet_name:str, rows:List[tuple]) -> bytes:
-    bio = BytesIO()
-    with pd.ExcelWriter(bio, engine="openpyxl") as writer:
-        rows_to_df(rows).to_excel(writer, index=False, sheet_name=sheet_name[:31])
-    return bio.getvalue()
+    # Streamlit Cloud me openpyxl install na ho to .xlsx export error deta hai.
+    # Isliye yahan pure HTML based .xls export banaya gaya hai, jo Excel me directly open hota hai
+    # aur kisi extra package/openpyxl ki zaroorat nahi hoti.
+    safe_sheet = html.escape(str(sheet_name))
+    trs = "".join([
+        f"<tr><td>{html.escape(str(a))}</td><td>{html.escape(fmt(b))}</td></tr>"
+        for a, b in rows
+    ])
+    xls_html = f"""
+    <html>
+    <head>
+    <meta charset="utf-8">
+    <style>
+      table{{border-collapse:collapse;font-family:Arial;font-size:12px;}}
+      th{{background:#0b4f73;color:white;font-weight:bold;}}
+      td,th{{border:1px solid #333;padding:6px;}}
+    </style>
+    </head>
+    <body>
+    <h2>Siyaram's Costing DB</h2>
+    <h3>{safe_sheet}</h3>
+    <table>
+      <tr><th>Particulars</th><th>Value</th></tr>
+      {trs}
+    </table>
+    </body>
+    </html>
+    """
+    return xls_html.encode("utf-8")
 
 def rows_report_html(title:str, sort_no:str, rows:List[tuple]) -> str:
     trs = "".join([f"<tr><td>{html.escape(str(a))}</td><td>{html.escape(fmt(b))}</td></tr>" for a,b in rows])
@@ -424,7 +461,7 @@ def cost_sheet_page():
     print_placeholder = c3.empty()
     export_placeholder = c4.empty()
     with c6: st.markdown('<div class="country-inline-label">Country</div>', unsafe_allow_html=True)
-    with c7: st.selectbox("Country", ["Bangladesh","Vietnam","Sri Lanka","Japan","USA","UAE"], index=0, label_visibility="collapsed", key="country_select")
+    with c7: country_selected = st.selectbox("Country", ["Bangladesh","Vietnam","Sri Lanka","Japan","USA","UAE"], index=0, label_visibility="collapsed", key="country_select")
 
     base=get_sort_row(sort)
     if not base:
@@ -464,7 +501,22 @@ def cost_sheet_page():
         st.rerun()
     if cleared:
         st.session_state.pop(wf_key, None)
+        st.session_state.pop("show_freight_master", None)
         st.rerun()
+    if freight_clicked:
+        st.session_state["show_freight_master"] = not st.session_state.get("show_freight_master", False)
+        st.rerun()
+    if st.session_state.get("show_freight_master", False):
+        st.markdown("<div class='ok'><b>Freight Master</b> - Country wise default freight INR/KG. Select country and click Apply Country Freight.</div>", unsafe_allow_html=True)
+        fcols = st.columns([1.5,1,1,6], gap="small")
+        with fcols[0]: st.write("Country")
+        with fcols[1]: st.write("Freight INR/KG")
+        with fcols[2]:
+            if st.button("Apply Country Freight", key="apply_country_freight_btn"):
+                vals["freight_inr_per_kg"] = FREIGHT_MASTER.get(country_selected, vals.get("freight_inr_per_kg", 0))
+                st.session_state[wf_key] = vals
+                st.rerun()
+        st.table(rows_to_df(freight_master_rows()))
 
     cost_rows=[
         ("Cotton Yarn Costing",getv(row,'cotton_yarn_costing')),("Wastage %",getv(row,'wastage')),("Dyeing Cost Rs.",getv(row,'dyeing_cost_rs')),
@@ -487,7 +539,7 @@ def cost_sheet_page():
     with print_placeholder.container():
         print_clicked = st.button("Print Preview", key=f"print_cost_sheet_{sort}")
     with export_placeholder.container():
-        st.download_button("Export This Sort", data=rows_to_excel_bytes("Cost Sheet", full_export_rows), file_name=f"Cost_Sheet_{sort}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=f"export_cost_sheet_{sort}")
+        st.download_button("Export This Sort", data=rows_to_excel_bytes("Cost Sheet", full_export_rows), file_name=f"Cost_Sheet_{sort}.xls", mime="application/vnd.ms-excel", key=f"export_cost_sheet_{sort}")
     if print_clicked:
         st.session_state[f"show_print_cost_sheet_{sort}"] = not st.session_state.get(f"show_print_cost_sheet_{sort}", False)
     if st.session_state.get(f"show_print_cost_sheet_{sort}", False):
@@ -522,7 +574,7 @@ def simple_cost_page(kind:str):
     with c2:
         print_clicked=st.button("Print Preview", key=f"print_{kind}_{sort}")
     with c3:
-        st.download_button("Export This Sort", data=rows_to_excel_bytes(kind, export_rows), file_name=f"{kind.replace(' ','_').replace('-','')}_{sort}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=f"export_{kind}_{sort}")
+        st.download_button("Export This Sort", data=rows_to_excel_bytes(kind, export_rows), file_name=f"{kind.replace(' ','_').replace('-','')}_{sort}.xls", mime="application/vnd.ms-excel", key=f"export_{kind}_{sort}")
     if print_clicked:
         st.session_state[f"show_print_{kind}_{sort}"] = not st.session_state.get(f"show_print_{kind}_{sort}", False)
     if st.session_state.get(f"show_print_{kind}_{sort}", False):
