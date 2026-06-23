@@ -55,7 +55,8 @@ a.navbtn.active{background:#166fe5;color:white;border-color:#166fe5;}
 .sheet-head{background:#0b4f73;color:#fff;height:37px;display:flex;align-items:center;padding:0 10px;font-size:17px;font-weight:900;margin-top:3px}.sheet-head .sort{margin-left:auto;color:#fff200;font-size:18px;}
 .whatif{border:1px solid #a7b7c6;background:#f7fbff;padding:4px 8px;margin:0 0 2px 0}.whatif-title{font-size:13px;font-weight:900;color:#01223a;margin-bottom:4px}.country-inline-label{font-weight:800;color:#001b34;font-size:12px;padding-top:7px;white-space:nowrap}
 .table-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:3px}.tblbox{border:1px solid #b2c1cf;background:white}.tbltitle{background:#0b4f73;color:#fff;font-weight:900;padding:3px 8px;font-size:13px;display:flex;align-items:center;gap:5px;min-height:32px;overflow:hidden}.tbltitle-main{white-space:nowrap;margin-right:6px}.tbl-kpis{display:flex;align-items:center;gap:4px;flex-wrap:nowrap;min-width:0;overflow:hidden}.tbl-kpi{height:23px;color:#fff;font-weight:900;display:flex;align-items:center;justify-content:center;padding:0 6px;font-size:9px;white-space:nowrap;border-radius:3px;line-height:1.05}.tbl-kpi b{margin-right:4px}.rbmtable{width:100%;border-collapse:collapse;font-size:12px;font-weight:700}.rbmtable td{border:1px solid #333;padding:4px 7px}.rbmtable td:nth-child(2){font-weight:700}.row-green td{background:#91f0a0}.row-red td:first-child{background:#ff5555;color:white}.row-red td:nth-child(2){background:#ffc7c7}.row-yellow td{background:#fff3b5}.row-blue td{background:#eef6ff}.footer{position:fixed;bottom:0;left:0;right:0;background:#0b4f73;color:#fff;padding:8px 20px;font-size:13px;font-weight:800;display:flex;justify-content:space-between;z-index:10}.footer b{color:#ffe600}.content-pad{padding-bottom:28px}
-.stButton button{height:30px!important;min-height:30px!important;padding:0 6px!important;font-weight:800;border-radius:4px;margin:0!important;white-space:nowrap!important;font-size:11px!important;line-height:1!important}.stSelectbox label,.stNumberInput label,.stTextInput label{font-weight:800;color:#001b34;font-size:12px!important}.stSelectbox div,.stTextInput input,.stNumberInput input{font-size:13px!important}.stNumberInput button{height:32px!important;min-height:32px!important}.warn{background:#fde9ed;color:#9b1230;padding:10px;border-radius:6px;margin:10px 0}.ok{background:#e8fff0;color:#006a24;padding:10px;border-radius:6px;margin:10px 0}
+.stButton button{height:26px!important;min-height:26px!important;padding:0 5px!important;font-weight:800;border-radius:4px;margin:0!important;white-space:nowrap!important;font-size:10px!important;line-height:1!important}
+.stFormSubmitButton button{height:26px!important;min-height:26px!important;padding:0 5px!important;font-weight:800!important;border-radius:4px!important;margin:0!important;white-space:nowrap!important;font-size:10px!important;line-height:1!important}.stSelectbox label,.stNumberInput label,.stTextInput label{font-weight:800;color:#001b34;font-size:12px!important}.stSelectbox div,.stTextInput input,.stNumberInput input{font-size:13px!important}.stNumberInput button{height:32px!important;min-height:32px!important}.warn{background:#fde9ed;color:#9b1230;padding:10px;border-radius:6px;margin:10px 0}.ok{background:#e8fff0;color:#006a24;padding:10px;border-radius:6px;margin:10px 0}
 .stButton button[kind="primary"]{background:#ff4d4d!important;border-color:#ff4d4d!important;color:white!important}
 
 .one-line-bar{display:flex;align-items:center;gap:6px;margin:4px 0 5px 0;white-space:nowrap;}
@@ -384,63 +385,57 @@ def cost_sheet_page():
     selected=st.session_state.get("selected_sort", sorts[0])
     if selected not in sorts: selected=sorts[0]
 
-    # One straight compact line: Sort + Refresh + Print + Export + Country + Apply + Freight + Clear
-    with st.form(f"whatif_form_{selected}", clear_on_submit=False):
-        c0,c1,c2,c3,c4,c5,c6,c7,c8,c9,c10=st.columns([1.22,1.55,0.60,0.90,1.05,0.10,0.55,1.05,0.58,0.92,0.55], gap="small")
-        with c0: st.markdown('<div class="label">Sort No (Excel D1):</div>', unsafe_allow_html=True)
-        with c1:
-            sort=st.selectbox("Sort No", sorts, index=sorts.index(selected), label_visibility="collapsed")
-            st.session_state.selected_sort=sort
-        with c2: refresh_clicked=st.form_submit_button("Refresh", type="primary")
-        with c3: st.form_submit_button("Print Preview")
-        with c4: st.form_submit_button("Export This Sort")
-        with c6: st.markdown('<div class="country-inline-label">Country</div>', unsafe_allow_html=True)
-        with c7: st.selectbox("Country", ["Bangladesh","Vietnam","Sri Lanka","Japan","USA","UAE"], index=0, label_visibility="collapsed")
-        with c8: submitted=st.form_submit_button("Apply", type="primary")
-        with c9: freight_clicked=st.form_submit_button("Freight Master")
-        with c10: cleared=st.form_submit_button("Clear")
+    # Top compact control line is outside form so changing Sort No updates values immediately.
+    c0,c1,c2,c3,c4,c5,c6,c7,c8,c9,c10=st.columns([1.12,1.38,0.48,0.72,0.82,0.08,0.44,0.78,0.48,0.78,0.44], gap="small")
+    with c0: st.markdown('<div class="label">Sort No (Excel D1):</div>', unsafe_allow_html=True)
+    with c1:
+        sort=st.selectbox("Sort No", sorts, index=sorts.index(selected), label_visibility="collapsed", key="selected_sort")
+    with c2:
+        if st.button("Refresh", type="primary", key="top_refresh_btn"): st.rerun()
+    with c3: st.button("Print Preview", key="top_print_btn")
+    with c4: st.button("Export This Sort", key="top_export_btn")
+    with c6: st.markdown('<div class="country-inline-label">Country</div>', unsafe_allow_html=True)
+    with c7: st.selectbox("Country", ["Bangladesh","Vietnam","Sri Lanka","Japan","USA","UAE"], index=0, label_visibility="collapsed", key="country_select")
 
-        base=get_sort_row(sort)
-        if not base:
-            st.error("Selected Sort No not found.")
-            return
+    base=get_sort_row(sort)
+    if not base:
+        st.error("Selected Sort No not found.")
+        return
 
-        wf_key=f"wf_{sort}"
-        applied = st.session_state.get(wf_key)
-        row = apply_whatif(base, applied) if applied else base
-
-        st.markdown('<div class="whatif-title">What-If Analysis</div>', unsafe_allow_html=True)
-        cols=st.columns(9, gap="small")
-        defaults={
-            'wastage':to_float(getv(row,'wastage'),0),
-            'dyeing_cost_rs':to_float(getv(row,'dyeing_cost_rs'),0),
-            'knittng__processing_cost':to_float(getv(row,'knittng__processing_cost'),90),
-            'wastage_after_knitting_pct':derive_after_knitting_pct(row),
-            'discount_if_any':to_float(getv(row,'discount_if_any'),0),
-            'currency_rate':to_float(getv(row,'currency_rate'),87),
-            'freight_inr_per_kg':to_float(getv(row,'freight_inr_per_kg'),0),
-            'commission_pct':derive_commission_pct(row),
-            'lc_days_interest':to_float(getv(row,'lc_days_interest','lc_days_interest_amount'),0),
-            'margin_pct':derive_margin_pct(row),
-        }
-        keys=[('wastage','Waste %'),('dyeing_cost_rs','Dyeing Cost Rs.'),('wastage_after_knitting_pct','Knit Waste %'),('discount_if_any','Discount %'),('currency_rate','Currency Rate'),('freight_inr_per_kg','Freight INR/KG'),('commission_pct','Commission %'),('lc_days_interest','LC Days / Interest'),('margin_pct','Margin %')]
-        vals={}
-        for i,(k,label) in enumerate(keys):
-            with cols[i]: vals[k]=st.number_input(label, value=float(defaults[k]), step=1.0 if k!='wastage' else 0.25, format="%.2f")
-        if submitted:
-            st.session_state[wf_key]=vals
-            st.rerun()
-        if cleared:
-            st.session_state.pop(wf_key, None)
-            st.rerun()
-        if refresh_clicked:
-            st.rerun()
-
-    base=get_sort_row(st.session_state.get("selected_sort", selected))
-    sort=st.session_state.get("selected_sort", selected)
     wf_key=f"wf_{sort}"
     applied = st.session_state.get(wf_key)
     row = apply_whatif(base, applied) if applied else base
+
+    st.markdown('<div class="whatif-title">What-If Analysis</div>', unsafe_allow_html=True)
+    cols=st.columns(9, gap="small")
+    defaults={
+        'wastage':to_float(getv(row,'wastage'),0),
+        'dyeing_cost_rs':to_float(getv(row,'dyeing_cost_rs'),0),
+        'knittng__processing_cost':to_float(getv(row,'knittng__processing_cost'),90),
+        'wastage_after_knitting_pct':derive_after_knitting_pct(row),
+        'discount_if_any':to_float(getv(row,'discount_if_any'),0),
+        'currency_rate':to_float(getv(row,'currency_rate'),87),
+        'freight_inr_per_kg':to_float(getv(row,'freight_inr_per_kg'),0),
+        'commission_pct':derive_commission_pct(row),
+        'lc_days_interest':to_float(getv(row,'lc_days_interest','lc_days_interest_amount'),0),
+        'margin_pct':derive_margin_pct(row),
+    }
+    keys=[('wastage','Waste %'),('dyeing_cost_rs','Dyeing Cost Rs.'),('wastage_after_knitting_pct','Knit Waste %'),('discount_if_any','Discount %'),('currency_rate','Currency Rate'),('freight_inr_per_kg','Freight INR/KG'),('commission_pct','Commission %'),('lc_days_interest','LC Days / Interest'),('margin_pct','Margin %')]
+    vals={}
+    for i,(k,label) in enumerate(keys):
+        with cols[i]: vals[k]=st.number_input(label, value=float(defaults[k]), step=1.0 if k!='wastage' else 0.25, format="%.2f", key=f"num_{sort}_{k}")
+    with c8:
+        submitted=st.button("Apply", type="primary", key="top_apply_btn")
+    with c9:
+        freight_clicked=st.button("Freight Master", key="top_freight_btn")
+    with c10:
+        cleared=st.button("Clear", key="top_clear_btn")
+    if submitted:
+        st.session_state[wf_key]=vals
+        st.rerun()
+    if cleared:
+        st.session_state.pop(wf_key, None)
+        st.rerun()
 
     cost_rows=[
         ("Cotton Yarn Costing",getv(row,'cotton_yarn_costing')),("Wastage %",getv(row,'wastage')),("Dyeing Cost Rs.",getv(row,'dyeing_cost_rs')),
