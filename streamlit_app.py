@@ -223,6 +223,7 @@ def header(title="Costing"):
     st.markdown(f"""
 <div class="rbm-top">
   <div class="logo"><div class="big">RBM AI</div><div class="sub">Robotic Business Management</div></div>
+  <div class="db-title">Siyaram's Costing DB</div>
   <div style="flex:1"></div>
   <div class="top-sort-only">SORT NO: {html.escape(str(s))}</div>
   <div class="top-actions"><span class="sync">☁ Sync Now</span><span class="on">⦿ ON</span></div>
@@ -511,20 +512,48 @@ def rm_price_page():
     header("Costing")
     st.markdown('<div class="sheet-head"><span>RM Price Master</span></div>', unsafe_allow_html=True)
     df=load_rm()
-    with st.form("rm_form"):
-        c1,c2,c3,c4=st.columns([2,2,1,1], gap="small")
-        parts=sorted([x for x in df.get('particulars',pd.Series(dtype=str)).astype(str).unique() if x])
-        prods=sorted([x for x in df.get('product',pd.Series(dtype=str)).astype(str).unique() if x])
-        part=c1.selectbox("Particulars", parts+['Add New'], index=0 if parts else 0)
-        if part=='Add New': part=c1.text_input("New Particulars")
-        prod=c2.selectbox("Product / Yarn", prods+['Add New'], index=0 if prods else 0)
-        if prod=='Add New': prod=c2.text_input("New Product / Yarn")
-        price=c3.number_input("Price", value=0.0, step=1.0, format="%.2f")
-        save=c4.form_submit_button("Save RM Price", type="primary")
-        if save and part and prod:
-            new={'particulars':part,'product':prod,'price':price,'change_date':datetime.now().strftime('%Y-%m-%d %H:%M:%S'),'price_numeric':price}
-            df=pd.concat([df,pd.DataFrame([new])], ignore_index=True); save_rm(df); st.success("RM Price saved.")
-    st.dataframe(df, use_container_width=True, height=420)
+
+    mode = st.radio("Mode", ["Add New Price", "Edit Existing Price"], horizontal=True, label_visibility="collapsed")
+
+    if mode == "Add New Price":
+        with st.form("rm_form_add"):
+            c1,c2,c3,c4=st.columns([2,2,1,1], gap="small")
+            parts=sorted([x for x in df.get('particulars',pd.Series(dtype=str)).astype(str).unique() if x])
+            prods=sorted([x for x in df.get('product',pd.Series(dtype=str)).astype(str).unique() if x])
+            part=c1.selectbox("Particulars", parts+['Add New'], index=0 if parts else 0)
+            if part=='Add New': part=c1.text_input("New Particulars")
+            prod=c2.selectbox("Product / Yarn", prods+['Add New'], index=0 if prods else 0)
+            if prod=='Add New': prod=c2.text_input("New Product / Yarn")
+            price=c3.number_input("Price", value=0.0, step=1.0, format="%.2f")
+            save=c4.form_submit_button("Save RM Price", type="primary")
+            if save and part and prod:
+                new={'particulars':part,'product':prod,'price':price,'change_date':datetime.now().strftime('%Y-%m-%d %H:%M:%S'),'price_numeric':price}
+                df=pd.concat([df,pd.DataFrame([new])], ignore_index=True); save_rm(df); st.success("RM Price saved.")
+    else:
+        if df.empty:
+            st.warning("No RM Price data available for edit.")
+        else:
+            edit_df = df.reset_index().copy()
+            edit_df["select_text"] = edit_df.apply(lambda x: f"{x['index']} | {x.get('particulars','')} | {x.get('product','')} | {x.get('price','')}", axis=1)
+            with st.form("rm_form_edit"):
+                c0,c1,c2,c3,c4=st.columns([1.4,2,2,1,1], gap="small")
+                selected_text = c0.selectbox("Select Row", edit_df["select_text"].tolist())
+                row_index = int(str(selected_text).split(" | ")[0])
+                old_row = df.loc[row_index].to_dict()
+                part = c1.text_input("Particulars", value=str(old_row.get('particulars','')))
+                prod = c2.text_input("Product / Yarn", value=str(old_row.get('product','')))
+                price = c3.number_input("Price", value=to_float(old_row.get('price'),0), step=1.0, format="%.2f")
+                update = c4.form_submit_button("Update Price", type="primary")
+                if update:
+                    df.loc[row_index, 'particulars'] = part
+                    df.loc[row_index, 'product'] = prod
+                    df.loc[row_index, 'price'] = price
+                    df.loc[row_index, 'price_numeric'] = price
+                    df.loc[row_index, 'change_date'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    save_rm(df)
+                    st.success("RM Price updated.")
+
+    st.dataframe(load_rm(), use_container_width=True, height=420)
 
 def users_page():
     header("Costing")
