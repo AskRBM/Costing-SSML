@@ -60,6 +60,14 @@ ONLINE_SUPABASE_KEY = _secret_or_env(
     default="sb_publishable_OcHaa48FL57wRoRohD6IsQ_7pCJd6LB"
 ).strip()
 
+# Optional secret-only fallback. Do NOT put service role key in GitHub.
+# Add it only in Streamlit Cloud: App > Settings > Secrets
+# SUPABASE_SERVICE_ROLE_KEY = "your service role key"
+ONLINE_SUPABASE_SERVICE_KEY = _secret_or_env(
+    "RBM_SUPABASE_SERVICE_KEY", "SUPABASE_SERVICE_ROLE_KEY", "SERVICE_ROLE_KEY", "supabase_service_role_key",
+    default=""
+).strip()
+
 MODULES = ["Cost Sheet", "Cost - Local", "Cost - Export", "Add Sort", "RM Price", "Users"]
 PERM = {
     "Cost Sheet":"can_cost_sheet",
@@ -121,12 +129,23 @@ a.navbtn.active{background:#166fe5;color:white;border-color:#166fe5;}
 
 # ---------- Supabase live data helpers ----------
 def supabase_enabled() -> bool:
-    return bool(ONLINE_SUPABASE_URL and ONLINE_SUPABASE_KEY)
+    return bool(ONLINE_SUPABASE_URL and (ONLINE_SUPABASE_KEY or ONLINE_SUPABASE_SERVICE_KEY))
 
-def _sb_headers() -> Dict[str, str]:
+def _available_supabase_keys() -> List[tuple]:
+    """Return keys in safe order. Publishable/anon first; service key only if configured in Streamlit secrets.
+    This solves 401 Unauthorized when publishable key is not allowed for REST read.
+    """
+    keys=[]
+    if ONLINE_SUPABASE_KEY:
+        keys.append(("publishable/anon", ONLINE_SUPABASE_KEY))
+    if ONLINE_SUPABASE_SERVICE_KEY and ONLINE_SUPABASE_SERVICE_KEY != ONLINE_SUPABASE_KEY:
+        keys.append(("service-secret", ONLINE_SUPABASE_SERVICE_KEY))
+    return keys
+
+def _sb_headers(key: str) -> Dict[str, str]:
     return {
-        "apikey": ONLINE_SUPABASE_KEY,
-        "Authorization": f"Bearer {ONLINE_SUPABASE_KEY}",
+        "apikey": key,
+        "Authorization": f"Bearer {key}",
         "Content-Type": "application/json",
         "Cache-Control": "no-cache",
         "Pragma": "no-cache",
@@ -158,34 +177,51 @@ def _expand_json_data_column(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 def supabase_table_df(table: str, limit: int = 100000) -> pd.DataFrame:
-    """Always read fresh live synced Supabase table. No Streamlit cache here,
-    because offline Sync Now must immediately reflect in online Sort No dropdown.
+    """Always read fresh live synced Supabase table.
+    Tries publishable/anon key first, then service key from Streamlit secrets if available.
     """
     if not supabase_enabled():
         st.session_state[f"sb_error_{table}"] = "Supabase URL/key missing"
         return pd.DataFrame()
-    try:
-        url = f"{ONLINE_SUPABASE_URL}/rest/v1/{urllib.parse.quote(table)}?select=*&limit={int(limit)}"
-        st.session_state[f"sb_url_{table}"] = url
-        headers = _sb_headers()
-        headers["Range-Unit"] = "items"
-        headers["Range"] = f"0-{int(limit)-1}"
-        req = urllib.request.Request(url, headers=headers, method="GET")
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            raw = resp.read().decode("utf-8", errors="ignore")
-        data = json.loads(raw) if raw.strip() else []
-        if not data:
-            st.session_state[f"sb_error_{table}"] = "Supabase returned 0 rows"
-            return pd.DataFrame()
-        df = pd.DataFrame(data).fillna("")
-        df.columns = [norm_col(c) for c in df.columns]
-        df = _expand_json_data_column(df)
-        st.session_state[f"sb_error_{table}"] = ""
-        st.session_state[f"sb_count_{table}"] = len(df)
-        return df
-    except Exception as e:
-        st.session_state[f"sb_error_{table}"] = str(e)
-        return pd.DataFrame()
+
+    errors=[]
+    for key_name, key in _available_supabase_keys():
+        try:
+            # cache buster forces Streamlit Cloud/browser/proxy to read latest synced data
+            cb = urllib.parse.quote(datetime.now().strftime("%Y%m%d%H%M%S%f"))
+            url = f"{ONLINE_SUPABASE_URL}/rest/v1/{urllib.parse.quote(table)}?select=*&limit={int(limit)}&_cb={cb}"
+            st.session_state[f"sb_url_{table}"] = url
+            headers = _sb_headers(key)
+            headers["Range-Unit"] = "items"
+            headers["Range"] = f"0-{int(limit)-1}"
+            req = urllib.request.Request(url, headers=headers, method="GET")
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                raw = resp.read().decode("utf-8", errors="ignore")
+            data = json.loads(raw) if raw.strip() else []
+            if not data:
+                errors.append(f"{key_name}: 0 rows")
+                continue
+            df = pd.DataFrame(data).fillna("")
+            df.columns = [norm_col(c) for c in df.columns]
+            df = _expand_json_data_column(df)
+            st.session_state[f"sb_error_{table}"] = ""
+            st.session_state[f"sb_count_{table}"] = len(df)
+            st.session_state[f"sb_key_used_{table}"] = key_name
+            return df
+        except urllib.error.HTTPError as e:
+            try:
+                body = e.read().decode("utf-8", errors="ignore")
+            except Exception:
+                body = ""
+            errors.append(f"{key_name}: HTTP {e.code} {body[:180]}")
+        except Exception as e:
+            errors.append(f"{key_name}: {e}")
+
+    msg = " | ".join(errors) if errors else "Unknown Supabase read error"
+    if "401" in msg or "Unauthorized" in msg:
+        msg += " | Fix: add SUPABASE_SERVICE_ROLE_KEY in Streamlit Secrets, or add correct anon/public REST API key."
+    st.session_state[f"sb_error_{table}"] = msg
+    return pd.DataFrame()
 
 # ---------- data helpers ----------
 def norm_col(c:str)->str:
@@ -267,6 +303,21 @@ def load_users() -> pd.DataFrame:
 
 def save_users(df: pd.DataFrame):
     st.session_state.users_df=df.copy()
+
+def fetch_live_supabase_now():
+    # Clear CSV/session cache and force fresh Supabase read.
+    try:
+        st.cache_data.clear()
+    except Exception:
+        pass
+    for k in list(st.session_state.keys()):
+        if str(k).startswith("sb_") or str(k) in ("group_df", "rm_df", "users_df"):
+            st.session_state.pop(k, None)
+    # Touch tables so status immediately appears after button click.
+    _ = supabase_table_df("specs")
+    _ = supabase_table_df("group_costing")
+    _ = supabase_table_df("app_users")
+
 
 def to_float(x:Any, default:float=0.0)->float:
     try:
@@ -464,12 +515,15 @@ def header(title="Costing"):
         st.markdown('<div class="nav-line-holder">', unsafe_allow_html=True)
         # Module buttons only. KPI boxes are now shown inside the dark-blue table headers.
         module_weights = [max(0.62, min(0.98, 0.38 + len(m) * 0.045)) for m in visible]
-        cols = st.columns(module_weights + [0.72], gap="small")
+        cols = st.columns(module_weights + [0.95, 0.72], gap="small")
         for i, m in enumerate(visible):
             btn_type = "primary" if st.session_state.get("module") == m else "secondary"
             if cols[i].button(m, key=f"nav_btn_{m}", type=btn_type, use_container_width=True):
                 st.session_state.module = m
                 st.rerun()
+        if cols[-2].button("Fetch Supabase", key="nav_fetch_supabase_btn", use_container_width=True):
+            fetch_live_supabase_now()
+            st.rerun()
         if cols[-1].button("Logout", key="nav_logout_btn", use_container_width=True):
             do_logout(); st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
@@ -668,7 +722,7 @@ def cost_sheet_page():
     if specs_err:
         st.caption(f"Supabase SPECS live read error: {specs_err}")
     elif specs_count:
-        st.caption(f"Supabase SPECS live rows: {specs_count}")
+        st.caption(f"Supabase SPECS live rows: {specs_count} | key: {st.session_state.get('sb_key_used_specs','')}")
     if not sorts:
         st.error("No sort data found from Supabase or GitHub CSV.")
         return
