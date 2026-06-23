@@ -4,6 +4,7 @@ import html
 from pathlib import Path
 from datetime import datetime
 from typing import Any, Dict, List
+from io import BytesIO
 
 import pandas as pd
 import streamlit as st
@@ -363,6 +364,32 @@ def calc_total_inr_kg(row:Dict[str,Any])->float:
     lc=to_float(getv(row,'lc_days_interest','lc_days_interest_amount','lc_days__interest_15_pm'),0)
     return price+freight+commission+lc
 
+
+def rows_to_df(rows:List[tuple]) -> pd.DataFrame:
+    return pd.DataFrame([{"Particulars": str(a), "Value": fmt(b)} for a,b in rows])
+
+def rows_to_excel_bytes(sheet_name:str, rows:List[tuple]) -> bytes:
+    bio = BytesIO()
+    with pd.ExcelWriter(bio, engine="openpyxl") as writer:
+        rows_to_df(rows).to_excel(writer, index=False, sheet_name=sheet_name[:31])
+    return bio.getvalue()
+
+def rows_report_html(title:str, sort_no:str, rows:List[tuple]) -> str:
+    trs = "".join([f"<tr><td>{html.escape(str(a))}</td><td>{html.escape(fmt(b))}</td></tr>" for a,b in rows])
+    return f"""
+    <div style="background:white;border:1px solid #9fb4c4;padding:14px;margin:8px 0;">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #0b4f73;padding-bottom:6px;margin-bottom:8px;">
+        <div><b style="font-size:20px;color:#0b4f73;">Siyaram's Costing DB</b><br><span>{html.escape(title)}</span></div>
+        <div style="font-weight:900;color:#0b4f73;">Sort No: {html.escape(str(sort_no))}</div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;font-weight:700;">
+        <tr style="background:#0b4f73;color:white;"><th style="border:1px solid #333;padding:6px;text-align:left;">Particulars</th><th style="border:1px solid #333;padding:6px;text-align:left;">Value</th></tr>
+        {trs}
+      </table>
+      <div style="margin-top:10px;font-weight:800;color:#0b4f73;">Publisher: RBM Textile Solutions</div>
+    </div>
+    """
+
 def row_class(label:str)->str:
     l=label.lower()
     if "discount" in l: return "row-red"
@@ -394,8 +421,8 @@ def cost_sheet_page():
         sort=st.selectbox("Sort No", sorts, index=sorts.index(selected), label_visibility="collapsed", key="selected_sort")
     with c2:
         if st.button("Refresh", type="primary", key="top_refresh_btn"): st.rerun()
-    with c3: st.button("Print Preview", key="top_print_btn")
-    with c4: st.button("Export This Sort", key="top_export_btn")
+    print_placeholder = c3.empty()
+    export_placeholder = c4.empty()
     with c6: st.markdown('<div class="country-inline-label">Country</div>', unsafe_allow_html=True)
     with c7: st.selectbox("Country", ["Bangladesh","Vietnam","Sri Lanka","Japan","USA","UAE"], index=0, label_visibility="collapsed", key="country_select")
 
@@ -456,6 +483,15 @@ def cost_sheet_page():
         ("LC Days / Interest",getv(row,'lc_days_interest','lc_days_interest_amount','lc_days__interest_15_pm')),
         ("Total Cost INR/KG",calc_total_inr_kg(row)),("Total Cost USD/KG",getv(row,'total_cost_usd__kg')),
     ]
+    full_export_rows = [("REPORT", "Cost Sheet"), ("Sort No", sort)] + cost_rows + export_rows
+    with print_placeholder.container():
+        print_clicked = st.button("Print Preview", key=f"print_cost_sheet_{sort}")
+    with export_placeholder.container():
+        st.download_button("Export This Sort", data=rows_to_excel_bytes("Cost Sheet", full_export_rows), file_name=f"Cost_Sheet_{sort}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=f"export_cost_sheet_{sort}")
+    if print_clicked:
+        st.session_state[f"show_print_cost_sheet_{sort}"] = not st.session_state.get(f"show_print_cost_sheet_{sort}", False)
+    if st.session_state.get(f"show_print_cost_sheet_{sort}", False):
+        st.markdown(rows_report_html("Cost Sheet Print Preview", sort, full_export_rows), unsafe_allow_html=True)
     cost_header_kpis = (
         f'<div class="tbl-kpi k1"><b>Structure</b>{html.escape(fmt(getv(row,"structure")))}</div>'
         f'<div class="tbl-kpi k2"><b>Finish GSM</b>{html.escape(fmt(getv(row,"finish_gsm")))}</div>'
@@ -474,12 +510,23 @@ def simple_cost_page(kind:str):
     st.markdown(f'<div class="sheet-head"><span>{html.escape(kind.upper())}</span></div>', unsafe_allow_html=True)
     if not sorts:
         st.error("No sort data found."); return
-    sort=st.selectbox("Sort No", sorts, index=sorts.index(selected) if selected in sorts else 0, key=f"{kind}_sort")
+    c1,c2,c3=st.columns([2.2,0.8,1.0], gap="small")
+    with c1:
+        sort=st.selectbox("Sort No", sorts, index=sorts.index(selected) if selected in sorts else 0, key=f"{kind}_sort")
     r=get_sort_row(sort)
     if kind=="Cost - Local":
         rows=[("Sort No",sort),("Structure",getv(r,'structure')),("Finish GSM",getv(r,'finish_gsm')),("Finish Width",getv(r,'finish_width')),("Local Cost",calc_local_cost(r)),("Sales Price",getv(r,'selling_price'))]
     else:
         rows=[("Sort No",sort),("Structure",getv(r,'structure')),("Finish GSM",getv(r,'finish_gsm')),("Finish Width",getv(r,'finish_width')),("Price",getv(r,'selling_price')),("Currency Rate",getv(r,'currency_rate')),("USD/Kg",getv(r,'price_usdkg','total_cost_usd__kg')),("Price USD Mtrs",getv(r,'price_usdmtrs')),("Price USD Yds",getv(r,'price_usdyds')),("Total Cost INR/KG",calc_total_inr_kg(r)),("Total Cost USD/KG",getv(r,'total_cost_usd__kg'))]
+    export_rows = [("REPORT", kind), ("Sort No", sort)] + rows
+    with c2:
+        print_clicked=st.button("Print Preview", key=f"print_{kind}_{sort}")
+    with c3:
+        st.download_button("Export This Sort", data=rows_to_excel_bytes(kind, export_rows), file_name=f"{kind.replace(' ','_').replace('-','')}_{sort}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=f"export_{kind}_{sort}")
+    if print_clicked:
+        st.session_state[f"show_print_{kind}_{sort}"] = not st.session_state.get(f"show_print_{kind}_{sort}", False)
+    if st.session_state.get(f"show_print_{kind}_{sort}", False):
+        st.markdown(rows_report_html(f"{kind} Print Preview", sort, export_rows), unsafe_allow_html=True)
     st.markdown(html_table(kind, rows), unsafe_allow_html=True)
 
 def add_sort_page():
