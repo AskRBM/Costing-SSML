@@ -237,12 +237,14 @@ def header(title="Costing"):
         st.markdown('<div class="nav-line-holder">', unsafe_allow_html=True)
         # Module buttons only. KPI boxes are now shown inside the dark-blue table headers.
         module_weights = [max(0.62, min(0.98, 0.38 + len(m) * 0.045)) for m in visible]
-        cols = st.columns(module_weights, gap="small")
+        cols = st.columns(module_weights + [0.72], gap="small")
         for i, m in enumerate(visible):
             btn_type = "primary" if st.session_state.get("module") == m else "secondary"
             if cols[i].button(m, key=f"nav_btn_{m}", type=btn_type, use_container_width=True):
                 st.session_state.module = m
                 st.rerun()
+        if cols[-1].button("Logout", key="nav_logout_btn", use_container_width=True):
+            do_logout(); st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
 def login_page():
@@ -562,7 +564,8 @@ def users_page():
     if st.session_state.role != "Developer" and 'role' in edit_df.columns:
         edit_df = edit_df[edit_df['role'].astype(str) != "Developer"]
     existing_users = [str(x) for x in edit_df.get('username', pd.Series(dtype=str)).dropna().tolist() if str(x).strip()]
-    edit_choice = st.selectbox("Edit Existing User", ["Create New User"] + existing_users, key="edit_existing_user")
+    st.markdown('<div style="font-weight:900;color:#001b34;margin:8px 0 4px 0;">Edit Existing User</div>', unsafe_allow_html=True)
+    edit_choice = st.selectbox("Edit Existing User", ["Create New User"] + existing_users, key="edit_existing_user", label_visibility="collapsed")
     edit_row = {}
     if edit_choice != "Create New User" and 'username' in df.columns:
         m = df[df['username'].astype(str).str.lower() == edit_choice.lower()]
