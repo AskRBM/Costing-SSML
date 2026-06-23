@@ -47,8 +47,10 @@ a.navbtn.active{background:#166fe5;color:white;border-color:#166fe5;}
 .top-actions{display:flex;gap:5px;align-items:center;white-space:nowrap;}
 .sync,.on,.logout{border-radius:4px;padding:7px 9px;color:#fff;font-weight:900;font-size:11px}.sync{background:#0ab052}.on{background:#087e20}.logout{background:#d81919;text-decoration:none}
 .userbox{text-align:right;font-size:11px;font-weight:900;min-width:145px;}
-.login-wrap{max-width:470px;margin:34px auto 0 auto;border:1px solid #b8cfe2;border-radius:8px;padding:18px 22px;background:#f8fcff;box-shadow:0 4px 14px rgba(0,0,0,.12)}
-.login-title{text-align:center;color:#0b4f73;font-size:24px;font-weight:900;margin-bottom:6px}.login-sub{text-align:center;color:#234;font-size:13px;font-weight:700;margin-bottom:10px}
+.login-hero{max-width:520px;margin:42px auto 0 auto;background:linear-gradient(135deg,#073e61,#0b5a80);border-radius:16px 16px 0 0;padding:22px 28px 18px 28px;color:#fff;text-align:center;box-shadow:0 10px 28px rgba(0,0,0,.20)}
+.login-hero .login-title{font-size:28px;font-weight:950;letter-spacing:.2px;margin-bottom:7px}.login-hero .login-sub{font-size:14px;font-weight:850;color:#d9f7ff}.login-badge{display:inline-block;margin-top:10px;background:#108d76;color:#fff;border-radius:30px;padding:6px 18px;font-size:12px;font-weight:900}
+.login-wrap{max-width:520px;margin:0 auto 0 auto;border:1px solid #a8c7dc;border-top:0;border-radius:0 0 16px 16px;padding:24px 28px 26px 28px;background:#ffffff;box-shadow:0 12px 30px rgba(0,0,0,.16)}
+.login-wrap label{font-size:13px!important;font-weight:900!important;color:#06334d!important}.login-wrap input{height:42px!important;border-radius:8px!important;border:1px solid #bdd4e4!important;background:#f7fbff!important;font-size:14px!important}.login-wrap .stButton button,.login-wrap .stFormSubmitButton button{height:42px!important;width:100%!important;border-radius:8px!important;font-size:14px!important;font-weight:950!important;background:#ff4d4d!important;border-color:#ff4d4d!important;color:white!important}.login-note{text-align:center;color:#526b7c;font-size:12px;font-weight:700;margin-top:12px}
 .control-strip{background:#dedbd5;padding:5px 10px;display:flex;align-items:center;gap:8px;white-space:nowrap;}
 .fast{margin-left:18px;color:#008000;font-weight:900;font-size:12px}.label{font-weight:900}.small-note{font-size:11px;color:#095;}
 .card-row{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:2px 0 0 0}.kpi{height:27px;color:white;font-weight:900;display:flex;align-items:center;padding:0 9px;font-size:12px;}
@@ -264,7 +266,8 @@ def login_page():
     st.markdown("""
 <div class="rbm-top"><div class="logo"><div class="big">RBM AI</div><div class="sub">Robotic Business Management</div></div><div class="titlebox">Costing</div></div>
 """, unsafe_allow_html=True)
-    st.markdown('<div class="login-wrap"><div class="login-title">Secure Client Login</div><div class="login-sub">RBM Textile Costing</div>', unsafe_allow_html=True)
+    st.markdown('<div class="login-hero"><div class="login-title">Secure Client Login</div><div class="login-sub">RBM Textile Costing System</div><div class="login-badge">Siyaram\'s Costing DB</div></div>', unsafe_allow_html=True)
+    st.markdown('<div class="login-wrap">', unsafe_allow_html=True)
     with st.form("login_form", clear_on_submit=False):
         u=st.text_input("Username", value="admin", key="login_u")
         p=st.text_input("Password", value="", type="password", key="login_p")
@@ -282,7 +285,7 @@ def login_page():
                 except Exception: pass
                 st.rerun()
         st.markdown('<div class="warn">Wrong username or password.</div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('<div class="login-note">Publisher: CSTRBM TECH PVT LTD • Made in India</div></div>', unsafe_allow_html=True)
 
 # ---------- calculation ----------
 def derive_after_knitting_pct(row:Dict[str,Any])->float:
