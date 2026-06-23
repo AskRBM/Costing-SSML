@@ -31,43 +31,42 @@ st.markdown("""
 <style>
 :root{--blue:#0b4f73;--green:#0f8d75;--red:#e52525;--bg:#eaf6fb;--line:#222;}
 [data-testid="stAppViewContainer"]{background:var(--bg);} 
-.block-container{padding:0.08rem 0.28rem 0.25rem 0.28rem; max-width:100%;}
+.block-container{padding:0.05rem 0.22rem 0.25rem 0.22rem; max-width:100%;}
 [data-testid="stHeader"], [data-testid="stToolbar"]{display:none!important; height:0!important;}
-#MainMenu, footer{visibility:hidden;} div[data-testid="stVerticalBlock"]{gap:0.15rem;}
-.rbm-top{background:#0b4f73;color:#fff;height:86px;display:flex;align-items:center;gap:10px;padding:0 10px;border-bottom:3px solid #d6eef8;overflow:hidden;position:relative;}
-.logo{width:145px;min-width:145px}.logo .big{font-size:29px;font-weight:900;line-height:28px}.logo .sub{font-size:9px;font-weight:800;}
-.titlebox{background:#108d76;height:56px;width:250px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;border-bottom:4px solid #d3f5ee;}
-.top-actions{display:flex;gap:7px;align-items:center;white-space:nowrap;}
-.sync,.on{border-radius:4px;padding:8px 10px;color:#fff;font-weight:900;font-size:11px}.sync{background:#0ab052}.on{background:#087e20}
-.userbox{text-align:right;font-size:12px;font-weight:900;min-width:150px;}
-/* Move the real Streamlit navigation buttons visually into the dark-blue header.
-   They remain st.button controls, so module clicks do NOT clear session/login. */
+#MainMenu, footer{visibility:hidden;} div[data-testid="stVerticalBlock"]{gap:0.08rem;}
+.rbm-top{background:#0b4f73;color:#fff;height:62px;display:flex;align-items:center;gap:6px;padding:0 8px;border-bottom:3px solid #d6eef8;overflow:hidden;position:relative;}
+.logo{width:150px;min-width:150px}.logo .big{font-size:28px;font-weight:900;line-height:27px}.logo .sub{font-size:8px;font-weight:800;}
+.titlebox{display:none!important;}
+.top-actions{display:flex;gap:5px;align-items:center;white-space:nowrap;margin-left:auto;}
+.sync,.on{border-radius:4px;padding:6px 8px;color:#fff;font-weight:900;font-size:10px}.sync{background:#0ab052}.on{background:#087e20}
+.userbox{text-align:right;font-size:11px;font-weight:900;min-width:135px;}
+/* Navigation buttons are real Streamlit buttons, visually placed inside dark-blue header. */
 div:has(> .rbm-nav-anchor) + div[data-testid="stHorizontalBlock"]{
-  margin-top:-72px!important; margin-left:380px!important; width:calc(100% - 390px)!important;
-  position:relative!important; z-index:50!important; align-items:center!important; padding-right:8px!important;
+  margin-top:-50px!important; margin-left:168px!important; width:calc(100% - 470px)!important;
+  position:relative!important; z-index:50!important; align-items:center!important; padding:0!important;
 }
+div:has(> .rbm-nav-anchor) + div[data-testid="stHorizontalBlock"] [data-testid="column"]{padding:0 2px!important;}
 div:has(> .rbm-nav-anchor) + div[data-testid="stHorizontalBlock"] .stButton button{
-  height:36px!important; min-height:36px!important; padding:0 8px!important; margin:0!important;
-  border-radius:5px!important; font-size:12px!important; font-weight:900!important; white-space:nowrap!important;
-  box-shadow:0 1px 2px rgba(0,0,0,.18)!important;
+  height:30px!important; min-height:30px!important; padding:0 6px!important; margin:0!important;
+  border-radius:4px!important; font-size:11px!important; font-weight:900!important; white-space:nowrap!important;
+  box-shadow:0 1px 2px rgba(0,0,0,.18)!important; line-height:1!important;
 }
 div:has(> .rbm-nav-anchor) + div[data-testid="stHorizontalBlock"] .stButton button[kind="primary"]{
   background:#166fe5!important; border-color:#166fe5!important; color:#fff!important;
 }
-/* reduce extra vertical gap after the top navigation */
-div:has(> .rbm-nav-anchor) + div[data-testid="stHorizontalBlock"] + div{margin-top:-8px!important;}
+div:has(> .rbm-nav-anchor) + div[data-testid="stHorizontalBlock"] + div{margin-top:-4px!important;}
 .login-wrap{max-width:470px;margin:34px auto 0 auto;border:1px solid #b8cfe2;border-radius:8px;padding:18px 22px;background:#f8fcff;box-shadow:0 4px 14px rgba(0,0,0,.12)}
 .login-title{text-align:center;color:#0b4f73;font-size:24px;font-weight:900;margin-bottom:6px}.login-sub{text-align:center;color:#234;font-size:13px;font-weight:700;margin-bottom:10px}
-.control-strip{background:#dedbd5;padding:5px 10px;display:flex;align-items:center;gap:8px;white-space:nowrap;}
-.fast{margin-left:18px;color:#008000;font-weight:900;font-size:12px}.label{font-weight:900}.small-note{font-size:11px;color:#095;}
-.card-row{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:2px 0 0 0}.kpi{height:27px;color:white;font-weight:900;display:flex;align-items:center;padding:0 9px;font-size:12px;}
-.kpi b{margin-right:14px}.k1{background:#0f8d75}.k2{background:#3159d8}.k3{background:#9a6500}.k4{background:#09a441}.k5{background:#b82e35}
-.sheet-head{background:#0b4f73;color:#fff;height:37px;display:flex;align-items:center;padding:0 10px;font-size:17px;font-weight:900;margin-top:3px}.sheet-head .sort{margin-left:auto;color:#fff200;font-size:18px;}
-.whatif{border:1px solid #a7b7c6;background:#f7fbff;padding:4px 8px;margin:0 0 2px 0}.whatif-title{font-size:13px;font-weight:900;color:#01223a;margin-bottom:4px}
+.control-strip{background:#dedbd5;padding:3px 8px;display:flex;align-items:center;gap:5px;white-space:nowrap;}
+.fast{margin-left:8px;color:#008000;font-weight:900;font-size:11px}.label{font-weight:900}.small-note{font-size:11px;color:#095;}
+.card-row{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin:1px 0 0 0}.kpi{height:24px;color:white;font-weight:900;display:flex;align-items:center;padding:0 7px;font-size:11px;}
+.kpi b{margin-right:10px}.k1{background:#0f8d75}.k2{background:#3159d8}.k3{background:#9a6500}.k4{background:#09a441}.k5{background:#b82e35}
+.sheet-head{background:#0b4f73;color:#fff;height:34px;display:flex;align-items:center;padding:0 9px;font-size:16px;font-weight:900;margin-top:2px}.sheet-head .sort{margin-left:auto;color:#fff200;font-size:17px;}
+.whatif{border:1px solid #a7b7c6;background:#f7fbff;padding:3px 7px;margin:0 0 2px 0}.whatif-title{font-size:12px;font-weight:900;color:#01223a;margin-bottom:2px}
 .table-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:3px}.tblbox{border:1px solid #b2c1cf;background:white}.tbltitle{background:#0b4f73;color:#fff;font-weight:900;padding:5px 9px;font-size:13px}.rbmtable{width:100%;border-collapse:collapse;font-size:12px;font-weight:700}.rbmtable td{border:1px solid #333;padding:4px 7px}.rbmtable td:nth-child(2){font-weight:700}.row-green td{background:#91f0a0}.row-red td:first-child{background:#ff5555;color:white}.row-red td:nth-child(2){background:#ffc7c7}.row-yellow td{background:#fff3b5}.row-blue td{background:#eef6ff}.footer{position:fixed;bottom:0;left:0;right:0;background:#0b4f73;color:#fff;padding:8px 20px;font-size:13px;font-weight:800;display:flex;justify-content:space-between;z-index:10}.footer b{color:#ffe600}.content-pad{padding-bottom:28px}
-.stButton button{height:34px;padding:1px 7px;font-weight:800;border-radius:4px;margin:0!important}.stSelectbox label,.stNumberInput label,.stTextInput label{font-weight:800;color:#001b34;font-size:12px!important}.stSelectbox div,.stTextInput input,.stNumberInput input{font-size:13px!important}.stNumberInput button{height:32px!important;min-height:32px!important}.warn{background:#fde9ed;color:#9b1230;padding:10px;border-radius:6px;margin:10px 0}.ok{background:#e8fff0;color:#006a24;padding:10px;border-radius:6px;margin:10px 0}
+.stButton button{height:30px!important;min-height:30px!important;padding:1px 7px!important;font-weight:800;border-radius:4px;margin:0!important;font-size:12px!important}.stSelectbox label,.stNumberInput label,.stTextInput label{font-weight:800;color:#001b34;font-size:11px!important}.stSelectbox div,.stTextInput input,.stNumberInput input{font-size:12px!important}.stNumberInput button{height:28px!important;min-height:28px!important}.warn{background:#fde9ed;color:#9b1230;padding:10px;border-radius:6px;margin:10px 0}.ok{background:#e8fff0;color:#006a24;padding:10px;border-radius:6px;margin:10px 0}
 .stButton button[kind="primary"]{background:#ff4d4d!important;border-color:#ff4d4d!important;color:white!important}
-@media(max-width:1000px){.rbm-top{height:90px;flex-wrap:nowrap;padding:6px}.titlebox{width:180px;height:44px;font-size:18px}.card-row,.table-grid{grid-template-columns:1fr}.footer{position:static}div:has(> .rbm-nav-anchor) + div[data-testid="stHorizontalBlock"]{margin-top:-4px!important;margin-left:0!important;width:100%!important;overflow-x:auto!important}.sync,.on,.userbox{display:none!important}}
+@media(max-width:1000px){.rbm-top{height:72px;flex-wrap:nowrap;padding:6px}.logo{width:130px;min-width:130px}.card-row,.table-grid{grid-template-columns:1fr}.footer{position:static}div:has(> .rbm-nav-anchor) + div[data-testid="stHorizontalBlock"]{margin-top:-4px!important;margin-left:0!important;width:100%!important;overflow-x:auto!important}.sync,.on,.userbox{display:none!important}}
 </style>
 """, unsafe_allow_html=True)
 
@@ -221,7 +220,6 @@ def header(title="Costing"):
     st.markdown(f"""
 <div class="rbm-top">
   <div class="logo"><div class="big">RBM AI</div><div class="sub">Robotic Business Management</div></div>
-  <div class="titlebox">{html.escape(title)}</div>
   <div style="flex:1"></div>
   <div class="top-actions"><span class="sync">☁ Sync Now</span><span class="on">⦿ ON</span></div>
   <div class="userbox">User: {user} | Role: {role}</div>
@@ -234,7 +232,7 @@ def header(title="Costing"):
         st.markdown('<span class="rbm-nav-anchor"></span>', unsafe_allow_html=True)
         labels = visible + ["Logout"]
         # tight side-by-side spacing; smaller weights keep buttons compact
-        cols = st.columns([0.86]*len(visible)+[0.72], gap="small")
+        cols = st.columns([0.72]*len(visible)+[0.62], gap="small")
         for i, m in enumerate(visible):
             btn_type = "primary" if st.session_state.get("module") == m else "secondary"
             if cols[i].button(m, key=f"nav_btn_{m}", type=btn_type, use_container_width=True):
@@ -355,7 +353,7 @@ def cost_sheet_page():
         return
     selected=st.session_state.get("selected_sort", sorts[0])
     if selected not in sorts: selected=sorts[0]
-    c0,c1,c2,c3,c4,c5=st.columns([1.4,2.3,0.7,0.95,1.15,3.2], gap="small")
+    c0,c1,c2,c3,c4,c5=st.columns([1.15,1.75,0.55,0.78,0.92,3.4], gap="small")
     with c0: st.markdown('<div class="label">Sort No (Excel D1):</div>', unsafe_allow_html=True)
     with c1:
         sort=st.selectbox("Sort No", sorts, index=sorts.index(selected), label_visibility="collapsed")
@@ -406,7 +404,7 @@ def cost_sheet_page():
         vals={}
         for i,(k,label) in enumerate(keys):
             with cols[i]: vals[k]=st.number_input(label, value=float(defaults[k]), step=1.0 if k!='wastage' else 0.25, format="%.2f")
-        ctry, submit_col, freight_col, clear_col, blank = st.columns([1.5,0.7,1.1,0.7,5], gap="small")
+        ctry, submit_col, freight_col, clear_col, blank = st.columns([1.15,0.55,0.85,0.55,6], gap="small")
         with ctry: st.selectbox("Country", ["Bangladesh","Vietnam","Sri Lanka","Japan","USA","UAE"], index=0)
         with submit_col: submitted=st.form_submit_button("Apply", type="primary")
         with freight_col: st.form_submit_button("Freight Master")
