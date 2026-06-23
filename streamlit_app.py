@@ -4,6 +4,7 @@ import html
 from pathlib import Path
 from datetime import datetime
 from typing import Any, Dict, List
+from io import BytesIO
 
 import pandas as pd
 import streamlit as st
@@ -15,7 +16,7 @@ DATA_DIR = BASE_DIR / "data"
 GROUP_CSV = DATA_DIR / "group_costing.csv"
 RM_CSV = DATA_DIR / "rm_price_master.csv"
 USERS_CSV = DATA_DIR / "users_default.csv"
-APP_VERSION = "2026-06-23-final-picture-layout-v1"
+APP_VERSION = "2026-06-23-print-export-freight-fixed-v2"
 
 MODULES = ["Cost Sheet", "Cost - Local", "Cost - Export", "Add Sort", "RM Price", "Users"]
 PERM = {
@@ -46,8 +47,10 @@ a.navbtn.active{background:#166fe5;color:white;border-color:#166fe5;}
 .top-actions{display:flex;gap:5px;align-items:center;white-space:nowrap;}
 .sync,.on,.logout{border-radius:4px;padding:7px 9px;color:#fff;font-weight:900;font-size:11px}.sync{background:#0ab052}.on{background:#087e20}.logout{background:#d81919;text-decoration:none}
 .userbox{text-align:right;font-size:11px;font-weight:900;min-width:145px;}
-.login-wrap{max-width:470px;margin:34px auto 0 auto;border:1px solid #b8cfe2;border-radius:8px;padding:18px 22px;background:#f8fcff;box-shadow:0 4px 14px rgba(0,0,0,.12)}
-.login-title{text-align:center;color:#0b4f73;font-size:24px;font-weight:900;margin-bottom:6px}.login-sub{text-align:center;color:#234;font-size:13px;font-weight:700;margin-bottom:10px}
+.login-hero{max-width:520px;margin:42px auto 0 auto;background:linear-gradient(135deg,#073e61,#0b5a80);border-radius:16px 16px 0 0;padding:22px 28px 18px 28px;color:#fff;text-align:center;box-shadow:0 10px 28px rgba(0,0,0,.20)}
+.login-hero .login-title{font-size:28px;font-weight:950;letter-spacing:.2px;margin-bottom:7px}.login-hero .login-sub{font-size:14px;font-weight:850;color:#d9f7ff}.login-badge{display:inline-block;margin-top:10px;background:#108d76;color:#fff;border-radius:30px;padding:6px 18px;font-size:12px;font-weight:900}
+.login-wrap{max-width:520px;margin:0 auto 0 auto;border:1px solid #a8c7dc;border-top:0;border-radius:0 0 16px 16px;padding:24px 28px 26px 28px;background:#ffffff;box-shadow:0 12px 30px rgba(0,0,0,.16)}
+.login-wrap label{font-size:13px!important;font-weight:900!important;color:#06334d!important}.login-wrap input{height:42px!important;border-radius:8px!important;border:1px solid #bdd4e4!important;background:#f7fbff!important;font-size:14px!important}.login-wrap .stButton button,.login-wrap .stFormSubmitButton button{height:42px!important;width:100%!important;border-radius:8px!important;font-size:14px!important;font-weight:950!important;background:#ff4d4d!important;border-color:#ff4d4d!important;color:white!important}.login-note{text-align:center;color:#526b7c;font-size:12px;font-weight:700;margin-top:12px}
 .control-strip{background:#dedbd5;padding:5px 10px;display:flex;align-items:center;gap:8px;white-space:nowrap;}
 .fast{margin-left:18px;color:#008000;font-weight:900;font-size:12px}.label{font-weight:900}.small-note{font-size:11px;color:#095;}
 .card-row{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:2px 0 0 0}.kpi{height:27px;color:white;font-weight:900;display:flex;align-items:center;padding:0 9px;font-size:12px;}
@@ -166,6 +169,18 @@ def sort_options()->List[str]:
     except Exception:
         return vals
 
+FREIGHT_MASTER = {
+    "Bangladesh": 15.0,
+    "Vietnam": 20.0,
+    "Sri Lanka": 18.0,
+    "Japan": 45.0,
+    "USA": 55.0,
+    "UAE": 35.0,
+}
+
+def freight_master_rows() -> List[tuple]:
+    return [(country, rate) for country, rate in FREIGHT_MASTER.items()]
+
 def get_sort_row(sort_no:str)->Dict[str,Any]:
     df=load_group()
     if df.empty: return {}
@@ -201,17 +216,10 @@ def has_perm(module:str)->bool:
     if not st.session_state.logged_in: return False
     role=str(st.session_state.role)
     if role=="Developer": return True
-    # Admin/User both follow the checkbox permission saved in User Management.
-    # Example: Export user gets only Cost - Export; Local user gets only Cost - Local.
+    if role=="Admin" and module in ["Cost Sheet","Cost - Local","Cost - Export","Add Sort","RM Price","Users"]: return True
     r=current_user_row()
     key=PERM.get(module, "")
     return str(r.get(key,"False")).lower() in ("true","1","yes")
-
-def first_allowed_module()->str:
-    for m in MODULES:
-        if has_perm(m):
-            return m
-    return "Cost Sheet"
 
 # ---------- UI ----------
 def set_module(m:str):
@@ -258,25 +266,28 @@ def login_page():
     st.markdown("""
 <div class="rbm-top"><div class="logo"><div class="big">RBM AI</div><div class="sub">Robotic Business Management</div></div><div class="titlebox">Costing</div></div>
 """, unsafe_allow_html=True)
-    st.markdown('<div class="login-wrap"><div class="login-title">Secure Client Login</div><div class="login-sub">RBM Textile Costing</div>', unsafe_allow_html=True)
-    with st.form("login_form", clear_on_submit=False):
-        u=st.text_input("Username", value="admin", key="login_u")
-        p=st.text_input("Password", value="", type="password", key="login_p")
-        submitted=st.form_submit_button("Login", type="primary")
-    if submitted:
-        users=load_users()
-        if "username" in users.columns and "password" in users.columns:
-            m=users[(users["username"].astype(str).str.lower()==u.strip().lower()) & (users["password"].astype(str)==p.strip())]
-            if not m.empty:
-                st.session_state.logged_in=True
-                st.session_state.username=m.iloc[0]["username"]
-                st.session_state.role=m.iloc[0].get("role","User")
-                st.session_state.module=first_allowed_module()
-                try: st.query_params.clear()
-                except Exception: pass
-                st.rerun()
-        st.markdown('<div class="warn">Wrong username or password.</div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('<div class="login-hero"><div class="login-title">Secure Client Login</div><div class="login-sub">RBM Textile Costing System</div><div class="login-badge">Siyaram\'s Costing DB</div></div>', unsafe_allow_html=True)
+    left, mid, right = st.columns([1.2, 1.0, 1.2])
+    with mid:
+        st.markdown('<div class="login-wrap">', unsafe_allow_html=True)
+        with st.form("login_form", clear_on_submit=False):
+            u=st.text_input("Username", value="admin", key="login_u")
+            p=st.text_input("Password", value="", type="password", key="login_p")
+            submitted=st.form_submit_button("Login", type="primary")
+        if submitted:
+            users=load_users()
+            if "username" in users.columns and "password" in users.columns:
+                m=users[(users["username"].astype(str).str.lower()==u.strip().lower()) & (users["password"].astype(str)==p.strip())]
+                if not m.empty:
+                    st.session_state.logged_in=True
+                    st.session_state.username=m.iloc[0]["username"]
+                    st.session_state.role=m.iloc[0].get("role","User")
+                    st.session_state.module="Cost Sheet"
+                    try: st.query_params.clear()
+                    except Exception: pass
+                    st.rerun()
+            st.markdown('<div class="warn">Wrong username or password.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="login-note">Publisher: CSTRBM TECH PVT LTD • Made in India</div></div>', unsafe_allow_html=True)
 
 # ---------- calculation ----------
 def derive_after_knitting_pct(row:Dict[str,Any])->float:
@@ -370,6 +381,57 @@ def calc_total_inr_kg(row:Dict[str,Any])->float:
     lc=to_float(getv(row,'lc_days_interest','lc_days_interest_amount','lc_days__interest_15_pm'),0)
     return price+freight+commission+lc
 
+
+def rows_to_df(rows:List[tuple]) -> pd.DataFrame:
+    return pd.DataFrame([{"Particulars": str(a), "Value": fmt(b)} for a,b in rows])
+
+def rows_to_excel_bytes(sheet_name:str, rows:List[tuple]) -> bytes:
+    # Streamlit Cloud me openpyxl install na ho to .xlsx export error deta hai.
+    # Isliye yahan pure HTML based .xls export banaya gaya hai, jo Excel me directly open hota hai
+    # aur kisi extra package/openpyxl ki zaroorat nahi hoti.
+    safe_sheet = html.escape(str(sheet_name))
+    trs = "".join([
+        f"<tr><td>{html.escape(str(a))}</td><td>{html.escape(fmt(b))}</td></tr>"
+        for a, b in rows
+    ])
+    xls_html = f"""
+    <html>
+    <head>
+    <meta charset="utf-8">
+    <style>
+      table{{border-collapse:collapse;font-family:Arial;font-size:12px;}}
+      th{{background:#0b4f73;color:white;font-weight:bold;}}
+      td,th{{border:1px solid #333;padding:6px;}}
+    </style>
+    </head>
+    <body>
+    <h2>Siyaram's Costing DB</h2>
+    <h3>{safe_sheet}</h3>
+    <table>
+      <tr><th>Particulars</th><th>Value</th></tr>
+      {trs}
+    </table>
+    </body>
+    </html>
+    """
+    return xls_html.encode("utf-8")
+
+def rows_report_html(title:str, sort_no:str, rows:List[tuple]) -> str:
+    trs = "".join([f"<tr><td>{html.escape(str(a))}</td><td>{html.escape(fmt(b))}</td></tr>" for a,b in rows])
+    return f"""
+    <div style="background:white;border:1px solid #9fb4c4;padding:14px;margin:8px 0;">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #0b4f73;padding-bottom:6px;margin-bottom:8px;">
+        <div><b style="font-size:20px;color:#0b4f73;">Siyaram's Costing DB</b><br><span>{html.escape(title)}</span></div>
+        <div style="font-weight:900;color:#0b4f73;">Sort No: {html.escape(str(sort_no))}</div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;font-weight:700;">
+        <tr style="background:#0b4f73;color:white;"><th style="border:1px solid #333;padding:6px;text-align:left;">Particulars</th><th style="border:1px solid #333;padding:6px;text-align:left;">Value</th></tr>
+        {trs}
+      </table>
+      <div style="margin-top:10px;font-weight:800;color:#0b4f73;">Publisher: RBM Textile Solutions</div>
+    </div>
+    """
+
 def row_class(label:str)->str:
     l=label.lower()
     if "discount" in l: return "row-red"
@@ -401,10 +463,10 @@ def cost_sheet_page():
         sort=st.selectbox("Sort No", sorts, index=sorts.index(selected), label_visibility="collapsed", key="selected_sort")
     with c2:
         if st.button("Refresh", type="primary", key="top_refresh_btn"): st.rerun()
-    with c3: st.button("Print Preview", key="top_print_btn")
-    with c4: st.button("Export This Sort", key="top_export_btn")
+    print_placeholder = c3.empty()
+    export_placeholder = c4.empty()
     with c6: st.markdown('<div class="country-inline-label">Country</div>', unsafe_allow_html=True)
-    with c7: st.selectbox("Country", ["Bangladesh","Vietnam","Sri Lanka","Japan","USA","UAE"], index=0, label_visibility="collapsed", key="country_select")
+    with c7: country_selected = st.selectbox("Country", ["Bangladesh","Vietnam","Sri Lanka","Japan","USA","UAE"], index=0, label_visibility="collapsed", key="country_select")
 
     base=get_sort_row(sort)
     if not base:
@@ -444,7 +506,22 @@ def cost_sheet_page():
         st.rerun()
     if cleared:
         st.session_state.pop(wf_key, None)
+        st.session_state.pop("show_freight_master", None)
         st.rerun()
+    if freight_clicked:
+        st.session_state["show_freight_master"] = not st.session_state.get("show_freight_master", False)
+        st.rerun()
+    if st.session_state.get("show_freight_master", False):
+        st.markdown("<div class='ok'><b>Freight Master</b> - Country wise default freight INR/KG. Select country and click Apply Country Freight.</div>", unsafe_allow_html=True)
+        fcols = st.columns([1.5,1,1,6], gap="small")
+        with fcols[0]: st.write("Country")
+        with fcols[1]: st.write("Freight INR/KG")
+        with fcols[2]:
+            if st.button("Apply Country Freight", key="apply_country_freight_btn"):
+                vals["freight_inr_per_kg"] = FREIGHT_MASTER.get(country_selected, vals.get("freight_inr_per_kg", 0))
+                st.session_state[wf_key] = vals
+                st.rerun()
+        st.table(rows_to_df(freight_master_rows()))
 
     cost_rows=[
         ("Cotton Yarn Costing",getv(row,'cotton_yarn_costing')),("Wastage %",getv(row,'wastage')),("Dyeing Cost Rs.",getv(row,'dyeing_cost_rs')),
@@ -463,6 +540,15 @@ def cost_sheet_page():
         ("LC Days / Interest",getv(row,'lc_days_interest','lc_days_interest_amount','lc_days__interest_15_pm')),
         ("Total Cost INR/KG",calc_total_inr_kg(row)),("Total Cost USD/KG",getv(row,'total_cost_usd__kg')),
     ]
+    full_export_rows = [("REPORT", "Cost Sheet"), ("Sort No", sort)] + cost_rows + export_rows
+    with print_placeholder.container():
+        print_clicked = st.button("Print Preview", key=f"print_cost_sheet_{sort}")
+    with export_placeholder.container():
+        st.download_button("Export This Sort", data=rows_to_excel_bytes("Cost Sheet", full_export_rows), file_name=f"Cost_Sheet_{sort}.xls", mime="application/vnd.ms-excel", key=f"export_cost_sheet_{sort}")
+    if print_clicked:
+        st.session_state[f"show_print_cost_sheet_{sort}"] = not st.session_state.get(f"show_print_cost_sheet_{sort}", False)
+    if st.session_state.get(f"show_print_cost_sheet_{sort}", False):
+        st.markdown(rows_report_html("Cost Sheet Print Preview", sort, full_export_rows), unsafe_allow_html=True)
     cost_header_kpis = (
         f'<div class="tbl-kpi k1"><b>Structure</b>{html.escape(fmt(getv(row,"structure")))}</div>'
         f'<div class="tbl-kpi k2"><b>Finish GSM</b>{html.escape(fmt(getv(row,"finish_gsm")))}</div>'
@@ -481,12 +567,23 @@ def simple_cost_page(kind:str):
     st.markdown(f'<div class="sheet-head"><span>{html.escape(kind.upper())}</span></div>', unsafe_allow_html=True)
     if not sorts:
         st.error("No sort data found."); return
-    sort=st.selectbox("Sort No", sorts, index=sorts.index(selected) if selected in sorts else 0, key=f"{kind}_sort")
+    c1,c2,c3=st.columns([2.2,0.8,1.0], gap="small")
+    with c1:
+        sort=st.selectbox("Sort No", sorts, index=sorts.index(selected) if selected in sorts else 0, key=f"{kind}_sort")
     r=get_sort_row(sort)
     if kind=="Cost - Local":
         rows=[("Sort No",sort),("Structure",getv(r,'structure')),("Finish GSM",getv(r,'finish_gsm')),("Finish Width",getv(r,'finish_width')),("Local Cost",calc_local_cost(r)),("Sales Price",getv(r,'selling_price'))]
     else:
         rows=[("Sort No",sort),("Structure",getv(r,'structure')),("Finish GSM",getv(r,'finish_gsm')),("Finish Width",getv(r,'finish_width')),("Price",getv(r,'selling_price')),("Currency Rate",getv(r,'currency_rate')),("USD/Kg",getv(r,'price_usdkg','total_cost_usd__kg')),("Price USD Mtrs",getv(r,'price_usdmtrs')),("Price USD Yds",getv(r,'price_usdyds')),("Total Cost INR/KG",calc_total_inr_kg(r)),("Total Cost USD/KG",getv(r,'total_cost_usd__kg'))]
+    export_rows = [("REPORT", kind), ("Sort No", sort)] + rows
+    with c2:
+        print_clicked=st.button("Print Preview", key=f"print_{kind}_{sort}")
+    with c3:
+        st.download_button("Export This Sort", data=rows_to_excel_bytes(kind, export_rows), file_name=f"{kind.replace(' ','_').replace('-','')}_{sort}.xls", mime="application/vnd.ms-excel", key=f"export_{kind}_{sort}")
+    if print_clicked:
+        st.session_state[f"show_print_{kind}_{sort}"] = not st.session_state.get(f"show_print_{kind}_{sort}", False)
+    if st.session_state.get(f"show_print_{kind}_{sort}", False):
+        st.markdown(rows_report_html(f"{kind} Print Preview", sort, export_rows), unsafe_allow_html=True)
     st.markdown(html_table(kind, rows), unsafe_allow_html=True)
 
 def add_sort_page():
@@ -616,7 +713,7 @@ if not st.session_state.logged_in:
 
 module=st.session_state.get("module","Cost Sheet")
 if not has_perm(module):
-    module=first_allowed_module()
+    module="Cost Sheet"
     st.session_state.module=module
 
 if module=="Cost Sheet": cost_sheet_page()
