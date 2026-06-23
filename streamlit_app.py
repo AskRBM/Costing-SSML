@@ -332,6 +332,33 @@ def apply_whatif(row:Dict[str,Any], wf:Dict[str,float])->Dict[str,Any]:
     })
     return r
 
+
+
+def calc_local_cost(row:Dict[str,Any])->float:
+    # Local Cost must match offline desktop: Costing value, not Selling Price.
+    existing=getv(row,'costing','local_cost','local_cost_inr')
+    if str(existing).strip() not in ('','nan','None'):
+        return to_float(existing,0)
+    raw=to_float(getv(row,'raw_material_cost'),0)
+    knit=to_float(getv(row,'knittng__processing_cost','knitting_processing_cost'),0)
+    wastage_after=to_float(getv(row,'wastage_2','wastage_after_knitting_cost'),0)
+    return raw+knit+wastage_after
+
+def calc_total_inr_kg(row:Dict[str,Any])->float:
+    # Total Cost INR/KG must match offline desktop:
+    # Price Per KG INR + Freight + Commission Amount + LC Days/Interest.
+    existing=getv(row,'total_cost_pricefreightcomlc_int_inr__kg','total_cost_pricefreightcomlc_int','total_cost_inr_kg','total_cost_inr')
+    if str(existing).strip() not in ('','nan','None'):
+        return to_float(existing,0)
+    price=to_float(getv(row,'price_per_kg_inr','selling_price'),0)
+    freight=to_float(getv(row,'freight_inr_per_kg'),0)
+    commission=to_float(getv(row,'commission'),0)
+    if commission==0:
+        commission_pct=to_float(getv(row,'commission_pct'), derive_commission_pct(row))
+        commission=price*commission_pct/100 if price else 0
+    lc=to_float(getv(row,'lc_days_interest','lc_days_interest_amount','lc_days__interest_15_pm'),0)
+    return price+freight+commission+lc
+
 def row_class(label:str)->str:
     l=label.lower()
     if "discount" in l: return "row-red"
@@ -429,7 +456,7 @@ def cost_sheet_page():
         ("Weight GSM",getv(row,'weight_gsm','finish_gsm')),("Price Per KG INR",getv(row,'price_per_kg_inr','selling_price')),("Freight INR/KG",getv(row,'freight_inr_per_kg')),
         ("Commission %",getv(row,'commission_pct', default=derive_commission_pct(row))),("Commission Amount",getv(row,'commission')),
         ("LC Days / Interest",getv(row,'lc_days_interest','lc_days_interest_amount','lc_days__interest_15_pm')),
-        ("Total Cost INR/KG",getv(row,'total_cost_pricefreightcomlc_int_inr__kg','total_cost_pricefreightcomlc_int','total_cost_inr_kg','total_cost_inr')),("Total Cost USD/KG",getv(row,'total_cost_usd__kg')),
+        ("Total Cost INR/KG",calc_total_inr_kg(row)),("Total Cost USD/KG",getv(row,'total_cost_usd__kg')),
     ]
     cost_header_kpis = (
         f'<div class="tbl-kpi k1"><b>Structure</b>{html.escape(fmt(getv(row,"structure")))}</div>'
@@ -452,9 +479,9 @@ def simple_cost_page(kind:str):
     sort=st.selectbox("Sort No", sorts, index=sorts.index(selected) if selected in sorts else 0, key=f"{kind}_sort")
     r=get_sort_row(sort)
     if kind=="Cost - Local":
-        rows=[("Sort No",sort),("Structure",getv(r,'structure')),("Finish GSM",getv(r,'finish_gsm')),("Finish Width",getv(r,'finish_width')),("Local Cost",getv(r,'price_per_kg_inr','selling_price')),("Sales Price",getv(r,'selling_price'))]
+        rows=[("Sort No",sort),("Structure",getv(r,'structure')),("Finish GSM",getv(r,'finish_gsm')),("Finish Width",getv(r,'finish_width')),("Local Cost",calc_local_cost(r)),("Sales Price",getv(r,'selling_price'))]
     else:
-        rows=[("Sort No",sort),("Structure",getv(r,'structure')),("Finish GSM",getv(r,'finish_gsm')),("Finish Width",getv(r,'finish_width')),("Price",getv(r,'selling_price')),("Currency Rate",getv(r,'currency_rate')),("USD/Kg",getv(r,'price_usdkg','total_cost_usd__kg')),("Price USD Mtrs",getv(r,'price_usdmtrs')),("Price USD Yds",getv(r,'price_usdyds')),("Total Cost INR/KG",getv(r,'total_cost_pricefreightcomlc_int_inr__kg')),("Total Cost USD/KG",getv(r,'total_cost_usd__kg'))]
+        rows=[("Sort No",sort),("Structure",getv(r,'structure')),("Finish GSM",getv(r,'finish_gsm')),("Finish Width",getv(r,'finish_width')),("Price",getv(r,'selling_price')),("Currency Rate",getv(r,'currency_rate')),("USD/Kg",getv(r,'price_usdkg','total_cost_usd__kg')),("Price USD Mtrs",getv(r,'price_usdmtrs')),("Price USD Yds",getv(r,'price_usdyds')),("Total Cost INR/KG",calc_total_inr_kg(r)),("Total Cost USD/KG",getv(r,'total_cost_usd__kg'))]
     st.markdown(html_table(kind, rows), unsafe_allow_html=True)
 
 def add_sort_page():
