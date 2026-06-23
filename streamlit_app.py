@@ -29,51 +29,44 @@ PERM = {
 
 st.markdown("""
 <style>
-:root{--blue:#0b4f73;--green:#0f8d75;--red:#ff4d4d;--bg:#eaf6fb;--line:#222;}
+:root{--blue:#0b4f73;--green:#0f8d75;--red:#e52525;--bg:#eaf6fb;--line:#222;}
 [data-testid="stAppViewContainer"]{background:var(--bg);} 
-.block-container{padding:0.05rem 0.22rem 0.25rem 0.22rem; max-width:100%;}
+.block-container{padding:0.05rem 0.25rem 0.25rem 0.25rem; max-width:100%;}
 [data-testid="stHeader"], [data-testid="stToolbar"]{display:none!important; height:0!important;}
-#MainMenu, footer{visibility:hidden;} div[data-testid="stVerticalBlock"]{gap:0.05rem;}
-.rbm-top{background:#0b4f73;color:#fff;height:50px;display:flex;align-items:center;gap:6px;padding:0 8px;border-bottom:3px solid #d6eef8;overflow:hidden;position:relative;}
-.logo{width:145px;min-width:145px}.logo .big{font-size:25px;font-weight:900;line-height:24px}.logo .sub{font-size:7px;font-weight:800;}
+#MainMenu, footer{visibility:hidden;} div[data-testid="stVerticalBlock"]{gap:0.08rem;}
+.rbm-top{background:#0b4f73;color:#fff;height:64px;display:flex;align-items:center;padding:0 10px;border-bottom:3px solid #d6eef8;overflow:hidden;position:relative;}
+.logo{width:140px;min-width:140px}.logo .big{font-size:27px;font-weight:900;line-height:26px}.logo .sub{font-size:8px;font-weight:800;}
 .titlebox{display:none!important;}
-.top-actions{display:flex;gap:4px;align-items:center;white-space:nowrap;margin-left:auto;}
-.sync,.on{border-radius:4px;padding:5px 7px;color:#fff;font-weight:900;font-size:9px}.sync{background:#0ab052}.on{background:#087e20}
-.userbox{text-align:right;font-size:10px;font-weight:900;min-width:128px;}
-/* Real Streamlit navigation buttons placed inside the dark-blue header */
+.top-actions{margin-left:auto;display:flex;gap:6px;align-items:center;white-space:nowrap;}
+.sync,.on{border-radius:4px;padding:7px 9px;color:#fff;font-weight:900;font-size:10px}.sync{background:#0ab052}.on{background:#087e20}
+.userbox{text-align:right;font-size:11px;font-weight:900;min-width:165px;}
+/* Real Streamlit buttons moved into top dark-blue header. No anchor URL, no logout issue. */
 div:has(> .rbm-nav-anchor) + div[data-testid="stHorizontalBlock"]{
-  margin-top:-43px!important; margin-left:154px!important; width:calc(100% - 490px)!important;
-  position:relative!important; z-index:80!important; align-items:center!important; padding:0!important;
+  margin-top:-52px!important; margin-left:150px!important; width:790px!important;
+  position:relative!important; z-index:50!important; align-items:center!important; padding:0!important;
 }
-div:has(> .rbm-nav-anchor) + div[data-testid="stHorizontalBlock"] [data-testid="column"]{padding:0 1px!important; flex:0 0 auto!important; min-width:76px!important; max-width:98px!important;}
 div:has(> .rbm-nav-anchor) + div[data-testid="stHorizontalBlock"] .stButton button{
-  height:25px!important; min-height:25px!important; padding:0 5px!important; margin:0!important;
-  border-radius:4px!important; font-size:10px!important; font-weight:900!important; white-space:nowrap!important;
+  height:30px!important; min-height:30px!important; padding:0 6px!important; margin:0!important;
+  border-radius:4px!important; font-size:11px!important; font-weight:900!important; white-space:nowrap!important;
   box-shadow:0 1px 2px rgba(0,0,0,.18)!important; line-height:1!important;
 }
 div:has(> .rbm-nav-anchor) + div[data-testid="stHorizontalBlock"] .stButton button[kind="primary"]{
-  background:#ff4d4d!important; border-color:#ff4d4d!important; color:#fff!important;
+  background:#166fe5!important; border-color:#166fe5!important; color:#fff!important;
 }
 div:has(> .rbm-nav-anchor) + div[data-testid="stHorizontalBlock"] + div{margin-top:-2px!important;}
 .login-wrap{max-width:470px;margin:34px auto 0 auto;border:1px solid #b8cfe2;border-radius:8px;padding:18px 22px;background:#f8fcff;box-shadow:0 4px 14px rgba(0,0,0,.12)}
 .login-title{text-align:center;color:#0b4f73;font-size:24px;font-weight:900;margin-bottom:6px}.login-sub{text-align:center;color:#234;font-size:13px;font-weight:700;margin-bottom:10px}
-.control-strip{background:#dedbd5;padding:2px 6px;display:flex;align-items:center;gap:4px;white-space:nowrap;min-height:30px;}
-.fast{margin-left:4px;color:#008000;font-weight:900;font-size:10px}.label{font-weight:900;font-size:12px}.small-note{font-size:10px;color:#095;}
-.card-row{display:grid;grid-template-columns:repeat(5,1fr);gap:3px;margin:1px 0 0 0}.kpi{height:22px;color:white;font-weight:900;display:flex;align-items:center;padding:0 6px;font-size:10px;}
-.kpi b{margin-right:8px}.k1{background:#0f8d75}.k2{background:#3159d8}.k3{background:#9a6500}.k4{background:#09a441}.k5{background:#b82e35}
-.sheet-head{background:#0b4f73;color:#fff;height:30px;display:flex;align-items:center;padding:0 8px;font-size:15px;font-weight:900;margin-top:2px}.sheet-head .sort{margin-left:auto;color:#fff200;font-size:16px;}
-.whatif{border:1px solid #a7b7c6;background:#f7fbff;padding:2px 6px;margin:0 0 2px 0}.whatif-title{font-size:12px;font-weight:900;color:#01223a;margin-bottom:1px}
-.table-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:3px}.tblbox{border:1px solid #b2c1cf;background:white}.tbltitle{background:#0b4f73;color:#fff;font-weight:900;padding:4px 9px;font-size:12px}.rbmtable{width:100%;border-collapse:collapse;font-size:11px;font-weight:700}.rbmtable td{border:1px solid #333;padding:3px 7px}.rbmtable td:nth-child(2){font-weight:700}.row-green td{background:#91f0a0}.row-red td:first-child{background:#ff5555;color:white}.row-red td:nth-child(2){background:#ffc7c7}.row-yellow td{background:#fff3b5}.row-blue td{background:#eef6ff}.footer{position:fixed;bottom:0;left:0;right:0;background:#0b4f73;color:#fff;padding:7px 20px;font-size:12px;font-weight:800;display:flex;justify-content:space-between;z-index:10}.footer b{color:#ffe600}.content-pad{padding-bottom:28px}
-.stButton button{height:28px!important;min-height:28px!important;padding:1px 7px!important;font-weight:800;border-radius:4px;margin:0!important;font-size:11px!important}.stSelectbox label,.stNumberInput label,.stTextInput label{font-weight:800;color:#001b34;font-size:10px!important}.stSelectbox div,.stTextInput input,.stNumberInput input{font-size:11px!important}.stNumberInput button{height:24px!important;min-height:24px!important}.warn{background:#fde9ed;color:#9b1230;padding:10px;border-radius:6px;margin:10px 0}.ok{background:#e8fff0;color:#006a24;padding:10px;border-radius:6px;margin:10px 0}
-.stButton button[kind="primary"]{background:#ff4d4d!important;border-color:#ff4d4d!important;color:white!important}
-/* cost-sheet control row buttons and inputs compact */
-div:has(> .cost-controls-anchor) + div[data-testid="stHorizontalBlock"]{background:#dedbd5!important; padding:2px 6px!important; align-items:center!important; gap:2px!important;}
-div:has(> .cost-controls-anchor) + div[data-testid="stHorizontalBlock"] .stButton button{height:26px!important;min-height:26px!important;font-size:10px!important;padding:0 6px!important;}
-div:has(> .cost-controls-anchor) + div[data-testid="stHorizontalBlock"] [data-testid="stSelectbox"]{margin-top:-8px!important;}
-/* what-if lower controls compact */
-div[data-testid="stForm"] div[data-testid="stHorizontalBlock"] .stButton button{height:27px!important;min-height:27px!important;font-size:10px!important;padding:0 6px!important;}
-div[data-testid="stForm"] div[data-testid="stSelectbox"]{max-width:210px;}
-@media(max-width:1000px){.rbm-top{height:68px;flex-wrap:nowrap;padding:6px}.logo{width:130px;min-width:130px}.card-row,.table-grid{grid-template-columns:1fr}.footer{position:static}div:has(> .rbm-nav-anchor) + div[data-testid="stHorizontalBlock"]{margin-top:-4px!important;margin-left:0!important;width:100%!important;overflow-x:auto!important}.sync,.on,.userbox{display:none!important}}
+.control-strip{background:#dedbd5;padding:4px 8px;display:flex;align-items:center;gap:6px;white-space:nowrap;}
+.fast{margin-left:10px;color:#008000;font-weight:900;font-size:11px}.label{font-weight:900;font-size:13px}.small-note{font-size:11px;color:#095;}
+.card-row{display:grid;grid-template-columns:repeat(5,1fr);gap:5px;margin:2px 0 0 0}.kpi{height:24px;color:white;font-weight:900;display:flex;align-items:center;padding:0 7px;font-size:10px;white-space:nowrap;}
+.kpi b{margin-right:12px}.k1{background:#0f8d75}.k2{background:#3159d8}.k3{background:#9a6500}.k4{background:#09a441}.k5{background:#b82e35}
+.sheet-head{background:#0b4f73;color:#fff;height:31px;display:flex;align-items:center;padding:0 9px;font-size:15px;font-weight:900;margin-top:2px}.sheet-head .sort{margin-left:auto;color:#fff200;font-size:16px;}
+.whatif{border:1px solid #a7b7c6;background:#f7fbff;padding:3px 6px;margin:0 0 2px 0}.whatif-title{font-size:12px;font-weight:900;color:#01223a;margin-bottom:3px}
+.table-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:3px}.tblbox{border:1px solid #b2c1cf;background:white}.tbltitle{background:#0b4f73;color:#fff;font-weight:900;padding:5px 9px;font-size:13px}.rbmtable{width:100%;border-collapse:collapse;font-size:12px;font-weight:700}.rbmtable td{border:1px solid #333;padding:4px 7px}.rbmtable td:nth-child(2){font-weight:700}.row-green td{background:#91f0a0}.row-red td:first-child{background:#ff5555;color:white}.row-red td:nth-child(2){background:#ffc7c7}.row-yellow td{background:#fff3b5}.row-blue td{background:#eef6ff}.footer{position:fixed;bottom:0;left:0;right:0;background:#0b4f73;color:#fff;padding:8px 20px;font-size:13px;font-weight:800;display:flex;justify-content:space-between;z-index:10}.footer b{color:#ffe600}.content-pad{padding-bottom:28px}
+.stButton button,.stFormSubmitButton button{height:30px!important;min-height:30px!important;padding:0 8px!important;font-weight:800!important;border-radius:4px!important;margin:0!important;white-space:nowrap!important;font-size:12px!important;line-height:1!important;}
+.stSelectbox label,.stNumberInput label,.stTextInput label{font-weight:800;color:#001b34;font-size:11px!important}.stSelectbox div,.stTextInput input,.stNumberInput input{font-size:12px!important}.stNumberInput button{height:30px!important;min-height:30px!important}.warn{background:#fde9ed;color:#9b1230;padding:10px;border-radius:6px;margin:10px 0}.ok{background:#e8fff0;color:#006a24;padding:10px;border-radius:6px;margin:10px 0}
+.stButton button[kind="primary"],.stFormSubmitButton button[kind="primary"]{background:#ff4d4d!important;border-color:#ff4d4d!important;color:white!important}
+@media(max-width:1000px){.rbm-top{height:auto;min-height:60px;padding:6px}.card-row,.table-grid{grid-template-columns:1fr}.footer{position:static}div:has(> .rbm-nav-anchor) + div[data-testid="stHorizontalBlock"]{margin-top:0!important;margin-left:0!important;width:100%!important;overflow-x:auto!important}.sync,.on,.userbox{display:none!important}}
 </style>
 """, unsafe_allow_html=True)
 
@@ -227,6 +220,7 @@ def header(title="Costing"):
     st.markdown(f"""
 <div class="rbm-top">
   <div class="logo"><div class="big">RBM AI</div><div class="sub">Robotic Business Management</div></div>
+  <div class="titlebox">{html.escape(title)}</div>
   <div style="flex:1"></div>
   <div class="top-actions"><span class="sync">☁ Sync Now</span><span class="on">⦿ ON</span></div>
   <div class="userbox">User: {user} | Role: {role}</div>
@@ -239,7 +233,7 @@ def header(title="Costing"):
         st.markdown('<span class="rbm-nav-anchor"></span>', unsafe_allow_html=True)
         labels = visible + ["Logout"]
         # tight side-by-side spacing; smaller weights keep buttons compact
-        cols = st.columns([0.72]*len(visible)+[0.62], gap="small")
+        cols = st.columns([0.86]*len(visible)+[0.72], gap="small")
         for i, m in enumerate(visible):
             btn_type = "primary" if st.session_state.get("module") == m else "secondary"
             if cols[i].button(m, key=f"nav_btn_{m}", type=btn_type, use_container_width=True):
@@ -360,8 +354,7 @@ def cost_sheet_page():
         return
     selected=st.session_state.get("selected_sort", sorts[0])
     if selected not in sorts: selected=sorts[0]
-    st.markdown('<span class="cost-controls-anchor"></span>', unsafe_allow_html=True)
-    c0,c1,c2,c3,c4,c5=st.columns([0.9,1.7,0.42,0.62,0.72,3.0], gap="small")
+    c0,c1,c2,c3,c4,c5=st.columns([1.25,2.2,0.65,0.9,1.05,3.4], gap="small")
     with c0: st.markdown('<div class="label">Sort No (Excel D1):</div>', unsafe_allow_html=True)
     with c1:
         sort=st.selectbox("Sort No", sorts, index=sorts.index(selected), label_visibility="collapsed")
@@ -412,7 +405,7 @@ def cost_sheet_page():
         vals={}
         for i,(k,label) in enumerate(keys):
             with cols[i]: vals[k]=st.number_input(label, value=float(defaults[k]), step=1.0 if k!='wastage' else 0.25, format="%.2f")
-        ctry, submit_col, freight_col, clear_col, blank = st.columns([0.9,0.38,0.65,0.42,6.8], gap="small")
+        ctry, submit_col, freight_col, clear_col, blank = st.columns([1.7,0.9,1.25,0.8,4.7], gap="small")
         with ctry: st.selectbox("Country", ["Bangladesh","Vietnam","Sri Lanka","Japan","USA","UAE"], index=0)
         with submit_col: submitted=st.form_submit_button("Apply", type="primary")
         with freight_col: st.form_submit_button("Freight Master")
