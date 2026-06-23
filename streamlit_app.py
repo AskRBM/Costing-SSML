@@ -17,7 +17,7 @@ DATA_DIR = BASE_DIR / "data"
 GROUP_CSV = DATA_DIR / "group_costing.csv"
 RM_CSV = DATA_DIR / "rm_price_master.csv"
 USERS_CSV = DATA_DIR / "users_default.csv"
-APP_VERSION = "2026-06-23-online-supabase-specs-force-v7-sort-normalized-live"
+APP_VERSION = "2026-06-23-online-supabase-specs-force-v8-url-sanitized-debug-live"
 
 # Online app now reads live synced data from Supabase first.
 # IMPORTANT: Put these same values in Streamlit Cloud Secrets also.
@@ -38,10 +38,21 @@ def _secret_or_env(*names: str, default: str = "") -> str:
             pass
     return default
 
-ONLINE_SUPABASE_URL = _secret_or_env(
+def _normalize_supabase_url(u: str) -> str:
+    # Streamlit secrets me kabhi-kabhi /rest/v1/ wala API URL paste ho jata hai.
+    # REST call banate time hame sirf base URL chahiye: https://xxxx.supabase.co
+    u = str(u or "").strip().rstrip("/")
+    for cut in ["/rest/v1", "/auth/v1", "/storage/v1"]:
+        if cut in u:
+            u = u.split(cut)[0]
+    if ".supabase.co" in u:
+        u = u.split(".supabase.co")[0] + ".supabase.co"
+    return u.rstrip("/")
+
+ONLINE_SUPABASE_URL = _normalize_supabase_url(_secret_or_env(
     "RBM_SUPABASE_URL", "SUPABASE_URL", "supabase_url",
     default="https://mmzvwlitakluttlnnioh.supabase.co"
-).strip().rstrip("/")
+))
 
 # Use publishable/anon key for Streamlit online read. Do NOT use service-role key in public GitHub.
 ONLINE_SUPABASE_KEY = _secret_or_env(
@@ -155,6 +166,7 @@ def supabase_table_df(table: str, limit: int = 100000) -> pd.DataFrame:
         return pd.DataFrame()
     try:
         url = f"{ONLINE_SUPABASE_URL}/rest/v1/{urllib.parse.quote(table)}?select=*&limit={int(limit)}"
+        st.session_state[f"sb_url_{table}"] = url
         headers = _sb_headers()
         headers["Range-Unit"] = "items"
         headers["Range"] = f"0-{int(limit)-1}"
@@ -650,8 +662,15 @@ def html_table(title:str, rows:List[tuple], header_extra:str="")->str:
 def cost_sheet_page():
     header("Costing")
     sorts=sort_options()
+    # Small live-sync status. This confirms online app is reading Supabase, not only GitHub CSV.
+    specs_count = st.session_state.get("sb_count_specs", 0)
+    specs_err = st.session_state.get("sb_error_specs", "")
+    if specs_err:
+        st.caption(f"Supabase SPECS live read error: {specs_err}")
+    elif specs_count:
+        st.caption(f"Supabase SPECS live rows: {specs_count}")
     if not sorts:
-        st.error("group_costing.csv not found or empty. Upload group_costing.csv in GitHub root OR data/group_costing.csv.")
+        st.error("No sort data found from Supabase or GitHub CSV.")
         return
     selected=st.session_state.get("selected_sort", sorts[0])
     if selected not in sorts: selected=sorts[0]
