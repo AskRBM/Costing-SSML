@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import html
-from urllib.parse import quote
 from pathlib import Path
 from datetime import datetime
 from typing import Any, Dict, List
@@ -16,7 +15,7 @@ DATA_DIR = BASE_DIR / "data"
 GROUP_CSV = DATA_DIR / "group_costing.csv"
 RM_CSV = DATA_DIR / "rm_price_master.csv"
 USERS_CSV = DATA_DIR / "users_default.csv"
-APP_VERSION = "2026-06-23-final-syntax-ok-topnav-compact-no-logout-v6"
+APP_VERSION = "2026-06-22-final-no-url-nav-calc-v3"
 
 MODULES = ["Cost Sheet", "Cost - Local", "Cost - Export", "Add Sort", "RM Price", "Users"]
 PERM = {
@@ -32,61 +31,27 @@ st.markdown("""
 <style>
 :root{--blue:#0b4f73;--green:#0f8d75;--red:#e52525;--bg:#eaf6fb;--line:#222;}
 [data-testid="stAppViewContainer"]{background:var(--bg);} 
-.block-container{padding:0.05rem 0.25rem 0.25rem 0.25rem; max-width:100%;}
+.block-container{padding:0.15rem 0.35rem 0.25rem 0.35rem; max-width:100%;}
 [data-testid="stHeader"], [data-testid="stToolbar"]{display:none!important; height:0!important;}
-#MainMenu, footer{visibility:hidden;} div[data-testid="stVerticalBlock"]{gap:0.08rem;}
-.rbm-top{background:#0b4f73;color:#fff;height:64px;display:flex;align-items:center;padding:0 10px;border-bottom:3px solid #d6eef8;overflow:hidden;position:relative;}
-.logo{width:140px;min-width:140px}.logo .big{font-size:27px;font-weight:900;line-height:26px}.logo .sub{font-size:8px;font-weight:800;}
-.titlebox{display:none!important;}
-.top-actions{margin-left:auto;display:flex;gap:6px;align-items:center;white-space:nowrap;}
-.sync,.on{border-radius:4px;padding:7px 9px;color:#fff;font-weight:900;font-size:10px}.sync{background:#0ab052}.on{background:#087e20}
-.userbox{text-align:right;font-size:11px;font-weight:900;min-width:165px;}
-/* TOP MODULE BUTTONS - EXACT DARK-BLUE HEADER POSITION (HTML links, auto-fit) */
-.nav-inline{
-  margin-left:10px;
-  display:flex;
-  gap:10px;
-  align-items:center;
-  flex:0 1 auto;
-  overflow:hidden;
-  white-space:nowrap;
-}
-.nav-inline a{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  height:28px;
-  min-width:118px;
-  padding:0 12px;
-  border-radius:2px;
-  background:#ffffff;
-  border:1px solid #d6d6d6;
-  color:#102030!important;
-  text-decoration:none!important;
-  font-size:11px;
-  font-weight:900;
-  line-height:1;
-  box-sizing:border-box;
-}
-.nav-inline a.active{
-  background:#ff4d4d!important;
-  border-color:#ff4d4d!important;
-  color:#ffffff!important;
-}
-.nav-spacer{flex:1 1 auto; min-width:8px;}
-.login-wrap{max-width:470px;margin:34px auto 0 auto;border:1px solid #b8cfe2;border-radius:8px;padding:18px 22px;background:#f8fcff;box-shadow:0 4px 14px rgba(0,0,0,.12)}
-.login-title{text-align:center;color:#0b4f73;font-size:24px;font-weight:900;margin-bottom:6px}.login-sub{text-align:center;color:#234;font-size:13px;font-weight:700;margin-bottom:10px}
-.control-strip{background:#dedbd5;padding:4px 8px;display:flex;align-items:center;gap:6px;white-space:nowrap;}
-.fast{margin-left:10px;color:#008000;font-weight:900;font-size:11px}.label{font-weight:900;font-size:13px}.small-note{font-size:11px;color:#095;}
-.card-row{display:grid;grid-template-columns:repeat(5,1fr);gap:5px;margin:2px 0 0 0}.kpi{height:24px;color:white;font-weight:900;display:flex;align-items:center;padding:0 7px;font-size:10px;white-space:nowrap;}
-.kpi b{margin-right:12px}.k1{background:#0f8d75}.k2{background:#3159d8}.k3{background:#9a6500}.k4{background:#09a441}.k5{background:#b82e35}
-.sheet-head{background:#0b4f73;color:#fff;height:31px;display:flex;align-items:center;padding:0 9px;font-size:15px;font-weight:900;margin-top:2px}.sheet-head .sort{margin-left:auto;color:#fff200;font-size:16px;}
-.whatif{border:1px solid #a7b7c6;background:#f7fbff;padding:3px 6px;margin:0 0 2px 0}.whatif-title{font-size:12px;font-weight:900;color:#01223a;margin-bottom:3px}
+#MainMenu, footer{visibility:hidden;} div[data-testid="stVerticalBlock"]{gap:0.22rem;}
+.rbm-top{background:#0b4f73;color:#fff;height:86px;display:flex;align-items:center;gap:10px;padding:0 10px;border-bottom:3px solid #d6eef8;overflow:hidden;}
+.logo{width:145px;min-width:145px}.logo .big{font-size:29px;font-weight:900;line-height:28px}.logo .sub{font-size:9px;font-weight:800;}
+.titlebox{background:#108d76;height:56px;width:260px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;border-bottom:4px solid #d3f5ee;}
+.nav{display:flex;gap:6px;align-items:center;flex-wrap:nowrap;flex:1;justify-content:center;}
+a.navbtn{text-decoration:none;background:#fff;color:#001b34;border:1px solid #b8cee8;border-radius:5px;padding:9px 15px;font-size:14px;font-weight:800;white-space:nowrap;box-shadow:0 1px 2px rgba(0,0,0,.15)}
+a.navbtn.active{background:#166fe5;color:white;border-color:#166fe5;}
+.top-actions{display:flex;gap:7px;align-items:center;white-space:nowrap;}
+.top-actions span,.logout{font-size:12px;font-weight:800}.sync,.on,.logout{border-radius:4px;padding:9px 12px;color:#fff;font-weight:900}.sync{background:#0ab052}.on{background:#087e20}.logout{background:#d81919;text-decoration:none}
+.userbox{text-align:right;font-size:12px;font-weight:900;min-width:150px;}
+.control-strip{background:#dedbd5;padding:5px 10px;display:flex;align-items:center;gap:8px;white-space:nowrap;}
+.fast{margin-left:18px;color:#008000;font-weight:900;font-size:12px}.label{font-weight:900}.small-note{font-size:11px;color:#095;}
+.card-row{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:2px 0 0 0}.kpi{height:27px;color:white;font-weight:900;display:flex;align-items:center;padding:0 9px;font-size:12px;}
+.kpi b{margin-right:14px}.k1{background:#0f8d75}.k2{background:#3159d8}.k3{background:#9a6500}.k4{background:#09a441}.k5{background:#b82e35}
+.sheet-head{background:#0b4f73;color:#fff;height:37px;display:flex;align-items:center;padding:0 10px;font-size:17px;font-weight:900;margin-top:3px}.sheet-head .sort{margin-left:auto;color:#fff200;font-size:18px;}
+.whatif{border:1px solid #a7b7c6;background:#f7fbff;padding:4px 8px;margin:0 0 2px 0}.whatif-title{font-size:13px;font-weight:900;color:#01223a;margin-bottom:4px}
 .table-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:3px}.tblbox{border:1px solid #b2c1cf;background:white}.tbltitle{background:#0b4f73;color:#fff;font-weight:900;padding:5px 9px;font-size:13px}.rbmtable{width:100%;border-collapse:collapse;font-size:12px;font-weight:700}.rbmtable td{border:1px solid #333;padding:4px 7px}.rbmtable td:nth-child(2){font-weight:700}.row-green td{background:#91f0a0}.row-red td:first-child{background:#ff5555;color:white}.row-red td:nth-child(2){background:#ffc7c7}.row-yellow td{background:#fff3b5}.row-blue td{background:#eef6ff}.footer{position:fixed;bottom:0;left:0;right:0;background:#0b4f73;color:#fff;padding:8px 20px;font-size:13px;font-weight:800;display:flex;justify-content:space-between;z-index:10}.footer b{color:#ffe600}.content-pad{padding-bottom:28px}
-.stButton button,.stFormSubmitButton button{height:30px!important;min-height:30px!important;padding:0 8px!important;font-weight:800!important;border-radius:4px!important;margin:0!important;white-space:nowrap!important;font-size:12px!important;line-height:1!important;}
-.stSelectbox label,.stNumberInput label,.stTextInput label{font-weight:800;color:#001b34;font-size:11px!important}.stSelectbox div,.stTextInput input,.stNumberInput input{font-size:12px!important}.stNumberInput button{height:30px!important;min-height:30px!important}.warn{background:#fde9ed;color:#9b1230;padding:10px;border-radius:6px;margin:10px 0}.ok{background:#e8fff0;color:#006a24;padding:10px;border-radius:6px;margin:10px 0}
-.stButton button[kind="primary"],.stFormSubmitButton button[kind="primary"]{background:#ff4d4d!important;border-color:#ff4d4d!important;color:white!important}
-@media(max-width:1000px){.rbm-top{height:auto;min-height:60px;padding:6px}.card-row,.table-grid{grid-template-columns:1fr}.footer{position:static}div:has(> .rbm-nav-anchor) + div[data-testid="stHorizontalBlock"]{margin-top:0!important;margin-left:0!important;width:100%!important;overflow-x:auto!important}.sync,.on,.userbox{display:none!important}}
+.stButton button{height:34px;padding:2px 8px;font-weight:800;border-radius:4px;margin:0!important}.stSelectbox label,.stNumberInput label,.stTextInput label{font-weight:800;color:#001b34;font-size:12px!important}.stSelectbox div,.stTextInput input,.stNumberInput input{font-size:13px!important}.stNumberInput button{height:32px!important;min-height:32px!important}.login-card{max-width:470px;margin:25px auto;border:1px solid #b8cfe2;border-radius:8px;padding:18px;background:#f8fcff}.warn{background:#fde9ed;color:#9b1230;padding:10px;border-radius:6px;margin:10px 0}.ok{background:#e8fff0;color:#006a24;padding:10px;border-radius:6px;margin:10px 0}
+@media(max-width:850px){.rbm-top{height:auto;flex-wrap:wrap;padding:8px}.titlebox{width:100%;height:42px}.nav{justify-content:flex-start;overflow-x:auto}.card-row,.table-grid{grid-template-columns:1fr}.top-actions{flex-wrap:wrap}.footer{position:static}.control-strip{flex-wrap:wrap}}
 </style>
 """, unsafe_allow_html=True)
 
@@ -208,22 +173,14 @@ if st.session_state.get("_app_version") != APP_VERSION:
             st.session_state.pop(_k, None)
     st.session_state["_app_version"] = APP_VERSION
 
-
-
-# Handle top navigation query parameters without clearing login session.
-def handle_nav_query_params():
-    try:
-        qp = st.query_params
-        if st.session_state.logged_in and qp.get("rbm_logout"):
-            do_logout()
-            st.query_params.clear()
-            st.rerun()
-        m = qp.get("rbm_module")
-        if st.session_state.logged_in and m in MODULES and has_perm(m):
-            st.session_state.module = m
-            st.query_params.clear()
-    except Exception:
-        pass
+# IMPORTANT: Do not use URL/query-string navigation for modules.
+# Streamlit Cloud can recreate the script session when URL parameters change,
+# which looks like logout. Module switching is now only by Streamlit session buttons.
+try:
+    if st.query_params:
+        st.query_params.clear()
+except Exception:
+    pass
 
 def current_user_row()->Dict[str,Any]:
     df=load_users()
@@ -240,9 +197,10 @@ def has_perm(module:str)->bool:
     return str(r.get(key,"False")).lower() in ("true","1","yes")
 
 # ---------- UI ----------
+def nav_url(m:str)->str:
+    return "?module=" + m.replace(" ", "%20")
+
 def set_module(m:str):
-    # Pure Streamlit button navigation. No URL query parameters are used,
-    # so clicking module buttons cannot destroy the login session.
     st.session_state.module = m
 
 def do_logout():
@@ -253,46 +211,45 @@ def do_logout():
 
 def header(title="Costing"):
     role=html.escape(str(st.session_state.role or "")); user=html.escape(str(st.session_state.username or ""))
-    visible=[m for m in MODULES if has_perm(m)]
-    nav_html = ""
-    for m in visible:
-        active = " active" if st.session_state.get("module") == m else ""
-        nav_html += f'<a class="{active.strip()}" href="?rbm_module={quote(m)}">{html.escape(m)}</a>'
-    nav_html += '<a href="?rbm_logout=1">Logout</a>'
     st.markdown(f"""
 <div class="rbm-top">
   <div class="logo"><div class="big">RBM AI</div><div class="sub">Robotic Business Management</div></div>
-  <div class="nav-inline">{nav_html}</div>
-  <div class="nav-spacer"></div>
+  <div class="titlebox">{html.escape(title)}</div>
+  <div style="flex:1"></div>
   <div class="top-actions"><span class="sync">☁ Sync Now</span><span class="on">⦿ ON</span></div>
   <div class="userbox">User: {user} | Role: {role}</div>
 </div>
 """, unsafe_allow_html=True)
+    # Real Streamlit buttons are used for modules. No HTML links, no URL params.
+    # This prevents logout/session loss when switching modules.
+    visible=[m for m in MODULES if has_perm(m)]
+    cols = st.columns([1]*len(visible)+[0.9], gap="small") if visible else st.columns([1])
+    for i,m in enumerate(visible):
+        btn_type = "primary" if st.session_state.get("module")==m else "secondary"
+        cols[i].button(m, key=f"nav_btn_{m}", type=btn_type, use_container_width=True, on_click=set_module, args=(m,))
+    if visible:
+        cols[-1].button("Logout", key="nav_logout_btn", type="secondary", use_container_width=True, on_click=do_logout)
 
 def login_page():
     st.markdown("""
 <div class="rbm-top"><div class="logo"><div class="big">RBM AI</div><div class="sub">Robotic Business Management</div></div><div class="titlebox">Costing</div></div>
 """, unsafe_allow_html=True)
-    left, mid, right = st.columns([1.2, 1.0, 1.2])
-    with mid:
-        st.markdown('<div class="login-title">Secure Client Login</div><div class="login-sub">RBM Textile Costing</div>', unsafe_allow_html=True)
-        with st.form("login_form", clear_on_submit=False):
-            u=st.text_input("Username", value="admin", key="login_u")
-            p=st.text_input("Password", value="", type="password", key="login_p")
-            submitted=st.form_submit_button("Login", type="primary")
-        if submitted:
-            users=load_users()
-            if "username" in users.columns and "password" in users.columns:
-                m=users[(users["username"].astype(str).str.lower()==u.strip().lower()) & (users["password"].astype(str)==p.strip())]
-                if not m.empty:
-                    st.session_state.logged_in=True
-                    st.session_state.username=m.iloc[0]["username"]
-                    st.session_state.role=m.iloc[0].get("role","User")
-                    st.session_state.module="Cost Sheet"
-                    try: st.query_params.clear()
-                    except Exception: pass
-                    st.rerun()
-            st.markdown('<div class="warn">Wrong username or password.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="login-card">', unsafe_allow_html=True)
+    st.markdown("### Secure Client Login")
+    u=st.text_input("Username", value="admin", key="login_u")
+    p=st.text_input("Password", value="", type="password", key="login_p")
+    if st.button("Login", type="primary"):
+        users=load_users()
+        if "username" in users.columns and "password" in users.columns:
+            m=users[(users["username"].astype(str).str.lower()==u.strip().lower()) & (users["password"].astype(str)==p.strip())]
+            if not m.empty:
+                st.session_state.logged_in=True
+                st.session_state.username=m.iloc[0]["username"]
+                st.session_state.role=m.iloc[0].get("role","User")
+                st.session_state.module="Cost Sheet"
+                st.rerun()
+        st.markdown('<div class="warn">Wrong username or password.</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------- calculation ----------
 def derive_after_knitting_pct(row:Dict[str,Any])->float:
@@ -381,7 +338,7 @@ def cost_sheet_page():
         return
     selected=st.session_state.get("selected_sort", sorts[0])
     if selected not in sorts: selected=sorts[0]
-    c0,c1,c2,c3,c4,c5=st.columns([1.25,2.2,0.65,0.9,1.05,3.4], gap="small")
+    c0,c1,c2,c3,c4,c5=st.columns([1.4,2.3,0.7,0.95,1.15,3.2], gap="small")
     with c0: st.markdown('<div class="label">Sort No (Excel D1):</div>', unsafe_allow_html=True)
     with c1:
         sort=st.selectbox("Sort No", sorts, index=sorts.index(selected), label_visibility="collapsed")
@@ -432,7 +389,7 @@ def cost_sheet_page():
         vals={}
         for i,(k,label) in enumerate(keys):
             with cols[i]: vals[k]=st.number_input(label, value=float(defaults[k]), step=1.0 if k!='wastage' else 0.25, format="%.2f")
-        ctry, submit_col, freight_col, clear_col, blank = st.columns([1.7,0.9,1.25,0.8,4.7], gap="small")
+        ctry, submit_col, freight_col, clear_col, blank = st.columns([1.5,0.7,1.1,0.7,5], gap="small")
         with ctry: st.selectbox("Country", ["Bangladesh","Vietnam","Sri Lanka","Japan","USA","UAE"], index=0)
         with submit_col: submitted=st.form_submit_button("Apply", type="primary")
         with freight_col: st.form_submit_button("Freight Master")
@@ -554,7 +511,6 @@ if not st.session_state.logged_in:
     login_page()
     st.stop()
 
-handle_nav_query_params()
 module=st.session_state.get("module","Cost Sheet")
 if not has_perm(module):
     module="Cost Sheet"
