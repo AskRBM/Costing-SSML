@@ -15,7 +15,7 @@ DATA_DIR = BASE_DIR / "data"
 GROUP_CSV = DATA_DIR / "group_costing.csv"
 RM_CSV = DATA_DIR / "rm_price_master.csv"
 USERS_CSV = DATA_DIR / "users_default.csv"
-APP_VERSION = "2026-06-22-final-streamlit-buttons-autofit-v5"
+APP_VERSION = "2026-06-23-swap-module-buttons-top-summary-row-v6"
 
 MODULES = ["Cost Sheet", "Cost - Local", "Cost - Export", "Add Sort", "RM Price", "Users"]
 PERM = {
@@ -57,6 +57,17 @@ a.navbtn.active{background:#166fe5;color:white;border-color:#166fe5;}
 .table-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:3px}.tblbox{border:1px solid #b2c1cf;background:white}.tbltitle{background:#0b4f73;color:#fff;font-weight:900;padding:5px 9px;font-size:13px}.rbmtable{width:100%;border-collapse:collapse;font-size:12px;font-weight:700}.rbmtable td{border:1px solid #333;padding:4px 7px}.rbmtable td:nth-child(2){font-weight:700}.row-green td{background:#91f0a0}.row-red td:first-child{background:#ff5555;color:white}.row-red td:nth-child(2){background:#ffc7c7}.row-yellow td{background:#fff3b5}.row-blue td{background:#eef6ff}.footer{position:fixed;bottom:0;left:0;right:0;background:#0b4f73;color:#fff;padding:8px 20px;font-size:13px;font-weight:800;display:flex;justify-content:space-between;z-index:10}.footer b{color:#ffe600}.content-pad{padding-bottom:28px}
 .stButton button{height:30px!important;min-height:30px!important;padding:0 6px!important;font-weight:800;border-radius:4px;margin:0!important;white-space:nowrap!important;font-size:11px!important;line-height:1!important}.stSelectbox label,.stNumberInput label,.stTextInput label{font-weight:800;color:#001b34;font-size:12px!important}.stSelectbox div,.stTextInput input,.stNumberInput input{font-size:13px!important}.stNumberInput button{height:32px!important;min-height:32px!important}.warn{background:#fde9ed;color:#9b1230;padding:10px;border-radius:6px;margin:10px 0}.ok{background:#e8fff0;color:#006a24;padding:10px;border-radius:6px;margin:10px 0}
 .stButton button[kind="primary"]{background:#ff4d4d!important;border-color:#ff4d4d!important;color:white!important}
+/* Move real Streamlit module buttons into the top dark-blue header */
+div:has(> .rbm-nav-anchor) + div[data-testid="stHorizontalBlock"]{
+  margin-top:-54px!important; margin-left:160px!important; width:680px!important;
+  position:relative!important; z-index:50!important; align-items:center!important; padding:0!important;
+}
+div:has(> .rbm-nav-anchor) + div[data-testid="stHorizontalBlock"] .stButton button{
+  width:auto!important; min-width:auto!important; height:30px!important; min-height:30px!important;
+  padding:0 10px!important; font-size:11px!important; white-space:nowrap!important; line-height:1!important;
+}
+.top-summary-strip{margin-top:18px;background:#0b4f73;padding:0;display:flex;align-items:center;gap:4px;overflow:hidden;}
+.top-summary-strip .top-kpi-row{width:100%;flex:1;}
 @media(max-width:1000px){.rbm-top{height:auto;flex-wrap:wrap;padding:8px}.titlebox{width:220px;height:42px}.nav{justify-content:flex-start;overflow-x:auto}.card-row,.table-grid{grid-template-columns:1fr}.top-actions{flex-wrap:wrap}.footer{position:static}.control-strip{flex-wrap:wrap}a.navbtn{padding:8px 11px;font-size:13px}}
 </style>
 """, unsafe_allow_html=True)
@@ -208,44 +219,46 @@ def do_logout():
 
 def header(title="Costing"):
     role=html.escape(str(st.session_state.role or "")); user=html.escape(str(st.session_state.username or ""))
-    # Top header summary replaces the old green "Costing" title box.
-    top_summary = '<div style="flex:1"></div>'
+    # Summary boxes are now shown in the old module-button row area.
+    top_summary = ""
     try:
         s = st.session_state.get("selected_sort", "")
         r = get_sort_row(s) if s else {}
         if r:
             top_summary = (
-                '<div class="top-kpi-row">'
+                '<div class="top-summary-strip"><div class="top-kpi-row">'
                 f'<div class="top-kpi k1"><b>Structure</b> {html.escape(fmt(getv(r,"structure")))}</div>'
                 f'<div class="top-kpi k2"><b>Finish GSM</b> {html.escape(fmt(getv(r,"finish_gsm")))}</div>'
                 f'<div class="top-kpi k3"><b>Finish Width</b> {html.escape(fmt(getv(r,"finish_width")))}</div>'
                 f'<div class="top-kpi k4"><b>Selling Price</b> {html.escape(fmt(getv(r,"selling_price")))}</div>'
                 f'<div class="top-kpi k5"><b>USD/KG</b> {html.escape(fmt(getv(r,"total_cost_usd__kg","price_usdkg")))}</div>'
                 f'<div class="top-sort">SORT NO: {html.escape(str(s))}</div>'
-                '</div>'
+                '</div></div>'
             )
     except Exception:
-        top_summary = '<div style="flex:1"></div>'
+        top_summary = ""
     st.markdown(f"""
 <div class="rbm-top">
   <div class="logo"><div class="big">RBM AI</div><div class="sub">Robotic Business Management</div></div>
-  {top_summary}
+  <div style="flex:1"></div>
   <div class="top-actions"><span class="sync">☁ Sync Now</span><span class="on">⦿ ON</span></div>
   <div class="userbox">User: {user} | Role: {role}</div>
 </div>
 """, unsafe_allow_html=True)
     visible=[m for m in MODULES if has_perm(m)]
-    # Compact button row directly under dark-blue header. These are real Streamlit
-    # buttons, not HTML links; session_state remains alive on every module click.
+    # Compact real Streamlit module buttons are moved by CSS into the top dark-blue header.
     if visible:
-        cols = st.columns([1]*len(visible)+[0.9], gap="small")
+        st.markdown('<span class="rbm-nav-anchor"></span>', unsafe_allow_html=True)
+        cols = st.columns([0.70]*len(visible)+[0.62], gap="small")
         for i, m in enumerate(visible):
             btn_type = "primary" if st.session_state.get("module") == m else "secondary"
-            if cols[i].button(m, key=f"nav_btn_{m}", type=btn_type, use_container_width=True):
+            if cols[i].button(m, key=f"nav_btn_{m}", type=btn_type, use_container_width=False):
                 st.session_state.module = m
                 st.rerun()
-        if cols[-1].button("Logout", key="nav_logout_btn", use_container_width=True):
+        if cols[-1].button("Logout", key="nav_logout_btn", use_container_width=False):
             do_logout(); st.rerun()
+    if top_summary:
+        st.markdown(top_summary, unsafe_allow_html=True)
 
 def login_page():
     st.markdown("""
