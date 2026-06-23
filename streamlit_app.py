@@ -15,7 +15,7 @@ DATA_DIR = BASE_DIR / "data"
 GROUP_CSV = DATA_DIR / "group_costing.csv"
 RM_CSV = DATA_DIR / "rm_price_master.csv"
 USERS_CSV = DATA_DIR / "users_default.csv"
-APP_VERSION = "2026-06-22-final-streamlit-buttons-autofit-v5"
+APP_VERSION = "2026-06-23-final-picture-layout-v1"
 
 MODULES = ["Cost Sheet", "Cost - Local", "Cost - Export", "Add Sort", "RM Price", "Users"]
 PERM = {
@@ -34,7 +34,7 @@ st.markdown("""
 .block-container{padding:0.08rem 0.28rem 0.25rem 0.28rem; max-width:100%;}
 [data-testid="stHeader"], [data-testid="stToolbar"]{display:none!important; height:0!important;}
 #MainMenu, footer{visibility:hidden;} div[data-testid="stVerticalBlock"]{gap:0.15rem;}
-.rbm-top{background:#0b4f73;color:#fff;height:52px;display:flex;align-items:center;gap:6px;padding:0 8px;border-bottom:2px solid #d6eef8;overflow:hidden;}
+.rbm-top{background:#0b4f73;color:#fff;height:54px;display:flex;align-items:center;gap:8px;padding:0 10px;border-bottom:2px solid #d6eef8;overflow:hidden;}
 .logo{width:145px;min-width:145px}.logo .big{font-size:26px;font-weight:900;line-height:24px}.logo .sub{font-size:8px;font-weight:800;}
 .titlebox{background:#108d76;height:54px;width:250px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;border-bottom:4px solid #d3f5ee;}
 .top-kpi-row{display:flex;gap:3px;align-items:center;flex:1;min-width:0;overflow:hidden;}
@@ -57,6 +57,15 @@ a.navbtn.active{background:#166fe5;color:white;border-color:#166fe5;}
 .table-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:3px}.tblbox{border:1px solid #b2c1cf;background:white}.tbltitle{background:#0b4f73;color:#fff;font-weight:900;padding:5px 9px;font-size:13px}.rbmtable{width:100%;border-collapse:collapse;font-size:12px;font-weight:700}.rbmtable td{border:1px solid #333;padding:4px 7px}.rbmtable td:nth-child(2){font-weight:700}.row-green td{background:#91f0a0}.row-red td:first-child{background:#ff5555;color:white}.row-red td:nth-child(2){background:#ffc7c7}.row-yellow td{background:#fff3b5}.row-blue td{background:#eef6ff}.footer{position:fixed;bottom:0;left:0;right:0;background:#0b4f73;color:#fff;padding:8px 20px;font-size:13px;font-weight:800;display:flex;justify-content:space-between;z-index:10}.footer b{color:#ffe600}.content-pad{padding-bottom:28px}
 .stButton button{height:30px!important;min-height:30px!important;padding:0 6px!important;font-weight:800;border-radius:4px;margin:0!important;white-space:nowrap!important;font-size:11px!important;line-height:1!important}.stSelectbox label,.stNumberInput label,.stTextInput label{font-weight:800;color:#001b34;font-size:12px!important}.stSelectbox div,.stTextInput input,.stNumberInput input{font-size:13px!important}.stNumberInput button{height:32px!important;min-height:32px!important}.warn{background:#fde9ed;color:#9b1230;padding:10px;border-radius:6px;margin:10px 0}.ok{background:#e8fff0;color:#006a24;padding:10px;border-radius:6px;margin:10px 0}
 .stButton button[kind="primary"]{background:#ff4d4d!important;border-color:#ff4d4d!important;color:white!important}
+
+.one-line-bar{display:flex;align-items:center;gap:6px;margin:4px 0 5px 0;white-space:nowrap;}
+.mini-kpi{height:29px;color:white;font-weight:900;display:flex;align-items:center;justify-content:center;padding:0 7px;font-size:10px;white-space:nowrap;border-radius:4px;line-height:1.05;text-align:center;}
+.mini-kpi b{margin-right:5px;}
+.top-sort-only{margin-left:auto;color:#fff200;font-size:14px;font-weight:900;white-space:nowrap;padding:0 10px;}
+.nav-line-holder .stButton button{width:auto!important;min-width:max-content!important;padding:0 12px!important;}
+.control-one-line{border:1px solid #c5d6e3;border-radius:4px;background:#f7fbff;padding:6px 8px;margin:4px 0 6px 0;}
+.country-inline-label{font-size:12px;font-weight:900;color:#001b34;padding-top:8px;}
+
 @media(max-width:1000px){.rbm-top{height:auto;flex-wrap:wrap;padding:8px}.titlebox{width:220px;height:42px}.nav{justify-content:flex-start;overflow-x:auto}.card-row,.table-grid{grid-template-columns:1fr}.top-actions{flex-wrap:wrap}.footer{position:static}.control-strip{flex-wrap:wrap}a.navbtn{padding:8px 11px;font-size:13px}}
 </style>
 """, unsafe_allow_html=True)
@@ -208,44 +217,44 @@ def do_logout():
 
 def header(title="Costing"):
     role=html.escape(str(st.session_state.role or "")); user=html.escape(str(st.session_state.username or ""))
-    # Top header summary replaces the old green "Costing" title box.
-    top_summary = '<div style="flex:1"></div>'
-    try:
-        s = st.session_state.get("selected_sort", "")
-        r = get_sort_row(s) if s else {}
-        if r:
-            top_summary = (
-                '<div class="top-kpi-row">'
-                f'<div class="top-kpi k1"><b>Structure</b> {html.escape(fmt(getv(r,"structure")))}</div>'
-                f'<div class="top-kpi k2"><b>Finish GSM</b> {html.escape(fmt(getv(r,"finish_gsm")))}</div>'
-                f'<div class="top-kpi k3"><b>Finish Width</b> {html.escape(fmt(getv(r,"finish_width")))}</div>'
-                f'<div class="top-kpi k4"><b>Selling Price</b> {html.escape(fmt(getv(r,"selling_price")))}</div>'
-                f'<div class="top-kpi k5"><b>USD/KG</b> {html.escape(fmt(getv(r,"total_cost_usd__kg","price_usdkg")))}</div>'
-                f'<div class="top-sort">SORT NO: {html.escape(str(s))}</div>'
-                '</div>'
-            )
-    except Exception:
-        top_summary = '<div style="flex:1"></div>'
+    s = st.session_state.get("selected_sort", "")
     st.markdown(f"""
 <div class="rbm-top">
   <div class="logo"><div class="big">RBM AI</div><div class="sub">Robotic Business Management</div></div>
-  {top_summary}
+  <div style="flex:1"></div>
+  <div class="top-sort-only">SORT NO: {html.escape(str(s))}</div>
   <div class="top-actions"><span class="sync">☁ Sync Now</span><span class="on">⦿ ON</span></div>
   <div class="userbox">User: {user} | Role: {role}</div>
 </div>
 """, unsafe_allow_html=True)
+
     visible=[m for m in MODULES if has_perm(m)]
-    # Compact button row directly under dark-blue header. These are real Streamlit
-    # buttons, not HTML links; session_state remains alive on every module click.
     if visible:
-        cols = st.columns([1]*len(visible)+[0.9], gap="small")
+        r = {}
+        try:
+            r = get_sort_row(s) if s else {}
+        except Exception:
+            r = {}
+        st.markdown('<div class="nav-line-holder">', unsafe_allow_html=True)
+        cols = st.columns([0.70,0.68,0.70,0.72,0.62] + [0.82]*len(visible) + [0.72], gap="small")
+        kpi_html = [
+            f'<div class="mini-kpi k1"><b>Structure</b>{html.escape(fmt(getv(r,"structure")))}</div>',
+            f'<div class="mini-kpi k2"><b>Finish GSM</b>{html.escape(fmt(getv(r,"finish_gsm")))}</div>',
+            f'<div class="mini-kpi k3"><b>Finish Width</b>{html.escape(fmt(getv(r,"finish_width")))}</div>',
+            f'<div class="mini-kpi k4"><b>Selling Price</b>{html.escape(fmt(getv(r,"selling_price")))}</div>',
+            f'<div class="mini-kpi k5"><b>USD/KG</b>{html.escape(fmt(getv(r,"total_cost_usd__kg","price_usdkg")))}</div>',
+        ]
+        for i, h in enumerate(kpi_html):
+            cols[i].markdown(h, unsafe_allow_html=True)
+        offset = 5
         for i, m in enumerate(visible):
             btn_type = "primary" if st.session_state.get("module") == m else "secondary"
-            if cols[i].button(m, key=f"nav_btn_{m}", type=btn_type, use_container_width=True):
+            if cols[offset+i].button(m, key=f"nav_btn_{m}", type=btn_type, use_container_width=True):
                 st.session_state.module = m
                 st.rerun()
-        if cols[-1].button("Logout", key="nav_logout_btn", use_container_width=True):
+        if cols[offset+len(visible)].button("Logout", key="nav_logout_btn", use_container_width=True):
             do_logout(); st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 
 def login_page():
     st.markdown("""
@@ -358,28 +367,34 @@ def cost_sheet_page():
         return
     selected=st.session_state.get("selected_sort", sorts[0])
     if selected not in sorts: selected=sorts[0]
-    c0,c1,c2,c3,c4,c5=st.columns([1.4,2.3,0.7,0.95,1.15,3.2], gap="small")
-    with c0: st.markdown('<div class="label">Sort No (Excel D1):</div>', unsafe_allow_html=True)
-    with c1:
-        sort=st.selectbox("Sort No", sorts, index=sorts.index(selected), label_visibility="collapsed")
-        st.session_state.selected_sort=sort
-    with c2:
-        if st.button("Refresh", type="primary"): st.rerun()
-    with c3: st.button("Print Preview")
-    with c4: st.button("Export This Sort")
-    with c5: st.markdown('<span class="fast">Fast mode: Cost sheet loads selected sort only</span>', unsafe_allow_html=True)
 
-    base=get_sort_row(sort)
-    if not base:
-        st.error("Selected Sort No not found.")
-        return
+    # One straight compact line: Sort + Refresh + Print + Export + Country + Apply + Freight + Clear
+    with st.form(f"whatif_form_{selected}", clear_on_submit=False):
+        c0,c1,c2,c3,c4,c5,c6,c7,c8,c9=st.columns([1.35,2.0,0.65,0.95,1.10,0.12,0.65,1.25,0.65,0.95], gap="small")
+        with c0: st.markdown('<div class="label">Sort No (Excel D1):</div>', unsafe_allow_html=True)
+        with c1:
+            sort=st.selectbox("Sort No", sorts, index=sorts.index(selected), label_visibility="collapsed")
+            st.session_state.selected_sort=sort
+        with c2: refresh_clicked=st.form_submit_button("Refresh", type="primary")
+        with c3: st.form_submit_button("Print Preview")
+        with c4: st.form_submit_button("Export This Sort")
+        with c6: st.markdown('<div class="country-inline-label">Country</div>', unsafe_allow_html=True)
+        with c7: st.selectbox("Country", ["Bangladesh","Vietnam","Sri Lanka","Japan","USA","UAE"], index=0, label_visibility="collapsed")
+        with c8: submitted=st.form_submit_button("Apply", type="primary")
+        with c9: freight_clicked=st.form_submit_button("Freight Master")
+        # Clear button goes just after Freight in a small inline column below if screen width is tight
+        clear_col, blank_col = st.columns([0.55,9.45], gap="small")
+        with clear_col: cleared=st.form_submit_button("Clear")
 
-    # default = exact offline group_costing values; apply only after Submit/Apply
-    wf_key=f"wf_{sort}"
-    applied = st.session_state.get(wf_key)
-    row = apply_whatif(base, applied) if applied else base
+        base=get_sort_row(sort)
+        if not base:
+            st.error("Selected Sort No not found.")
+            return
 
-    with st.form(f"whatif_form_{sort}", clear_on_submit=False):
+        wf_key=f"wf_{sort}"
+        applied = st.session_state.get(wf_key)
+        row = apply_whatif(base, applied) if applied else base
+
         st.markdown('<div class="whatif-title">What-If Analysis</div>', unsafe_allow_html=True)
         cols=st.columns(9, gap="small")
         defaults={
@@ -398,19 +413,20 @@ def cost_sheet_page():
         vals={}
         for i,(k,label) in enumerate(keys):
             with cols[i]: vals[k]=st.number_input(label, value=float(defaults[k]), step=1.0 if k!='wastage' else 0.25, format="%.2f")
-        # Country + action buttons in one straight compact line
-        ctry_label, ctry_select, submit_col, freight_col, clear_col, blank = st.columns([0.55,1.15,0.55,0.95,0.55,5.25], gap="small")
-        with ctry_label: st.markdown('<div class="country-inline-label">Country</div>', unsafe_allow_html=True)
-        with ctry_select: st.selectbox("Country", ["Bangladesh","Vietnam","Sri Lanka","Japan","USA","UAE"], index=0, label_visibility="collapsed")
-        with submit_col: submitted=st.form_submit_button("Apply", type="primary")
-        with freight_col: st.form_submit_button("Freight Master")
-        with clear_col: cleared=st.form_submit_button("Clear")
         if submitted:
             st.session_state[wf_key]=vals
             st.rerun()
         if cleared:
             st.session_state.pop(wf_key, None)
             st.rerun()
+        if refresh_clicked:
+            st.rerun()
+
+    base=get_sort_row(st.session_state.get("selected_sort", selected))
+    sort=st.session_state.get("selected_sort", selected)
+    wf_key=f"wf_{sort}"
+    applied = st.session_state.get(wf_key)
+    row = apply_whatif(base, applied) if applied else base
 
     cost_rows=[
         ("Cotton Yarn Costing",getv(row,'cotton_yarn_costing')),("Wastage %",getv(row,'wastage')),("Dyeing Cost Rs.",getv(row,'dyeing_cost_rs')),
