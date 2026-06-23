@@ -15,7 +15,7 @@ DATA_DIR = BASE_DIR / "data"
 GROUP_CSV = DATA_DIR / "group_costing.csv"
 RM_CSV = DATA_DIR / "rm_price_master.csv"
 USERS_CSV = DATA_DIR / "users_default.csv"
-APP_VERSION = "2026-06-23-final-topnav-compact-no-logout-v5"
+APP_VERSION = "2026-06-23-final-syntax-ok-topnav-compact-no-logout-v6"
 
 MODULES = ["Cost Sheet", "Cost - Local", "Cost - Export", "Add Sort", "RM Price", "Users"]
 PERM = {
@@ -515,4 +515,28 @@ def users_page():
         if save:
             if not username or not password: st.error("Username and Password required.")
             else:
-                row={'username':username,'password':password,'role':role, **{k:v for k,v in vals.items()}, 'can_edit_sort': vals.get('can_add_sort',False), 'can_delete_s
+                row={'username':username,'password':password,'role':role, **{k:v for k,v in vals.items()}, 'can_edit_sort': vals.get('can_add_sort',False), 'can_delete_sort': vals.get('can_add_sort',False), 'created_at':datetime.now().isoformat()}
+                df=df[df['username'].astype(str).str.lower()!=username.lower()] if 'username' in df.columns else df
+                df=pd.concat([df,pd.DataFrame([row])],ignore_index=True); save_users(df); st.success("User saved.")
+    show=df.copy()
+    if st.session_state.role!="Developer" and 'role' in show.columns:
+        show=show[show['role'].astype(str)!="Developer"]
+    st.dataframe(show, use_container_width=True, height=400)
+
+# ---------- main ----------
+if not st.session_state.logged_in:
+    login_page()
+    st.stop()
+
+module=st.session_state.get("module","Cost Sheet")
+if not has_perm(module):
+    module="Cost Sheet"
+    st.session_state.module=module
+
+if module=="Cost Sheet": cost_sheet_page()
+elif module=="Cost - Local": simple_cost_page("Cost - Local")
+elif module=="Cost - Export": simple_cost_page("Cost - Export")
+elif module=="Add Sort": add_sort_page()
+elif module=="RM Price": rm_price_page()
+elif module=="Users": users_page()
+else: cost_sheet_page()
