@@ -17,7 +17,7 @@ DATA_DIR = BASE_DIR / "data"
 GROUP_CSV = DATA_DIR / "group_costing.csv"
 RM_CSV = DATA_DIR / "rm_price_master.csv"
 USERS_CSV = DATA_DIR / "users_default.csv"
-APP_VERSION = "2026-06-23-online-excel-green-cell-formula-v17-specs-index-fixed"
+APP_VERSION = "2026-06-23-online-pks-sps-green-formula-v19"
 
 # Online app now reads live synced data from Supabase first.
 # IMPORTANT: Put these same values in Streamlit Cloud Secrets also.
@@ -265,10 +265,56 @@ def load_specs() -> pd.DataFrame:
 def save_group(df: pd.DataFrame):
     st.session_state.group_df = df.copy()
 
+def _standardize_rm_df(df: pd.DataFrame, source_name: str = "") -> pd.DataFrame:
+    """Make all RM price sources look same: particulars, product, price, change_date, price_numeric."""
+    if df is None or df.empty:
+        return pd.DataFrame()
+    x = df.copy().fillna("")
+    x.columns = [norm_col(c) for c in x.columns]
+    rename_map = {
+        "product_2": "product", "product_yarn": "product", "yarn": "product", "item": "product",
+        "particular": "particulars", "category": "particulars",
+        "changed_at": "change_date", "date": "change_date", "updated_at": "change_date",
+    }
+    for a, b in rename_map.items():
+        if a in x.columns and b not in x.columns:
+            x[b] = x[a]
+    for c in ["particulars", "product", "price", "change_date", "price_numeric"]:
+        if c not in x.columns:
+            x[c] = ""
+    if x["price_numeric"].astype(str).str.strip().eq("").all():
+        x["price_numeric"] = x["price"].map(lambda v: to_float(v, 0))
+    else:
+        x["price_numeric"] = x["price_numeric"].map(lambda v: to_float(v, 0))
+    x["price"] = x.apply(lambda r: r["price"] if str(r.get("price","")).strip() else r.get("price_numeric",0), axis=1)
+    x["_source"] = source_name
+    x = x[(x["product"].astype(str).str.strip() != "") & (x["price_numeric"].map(lambda v: to_float(v,0)) > 0)]
+    return x[["particulars", "product", "price", "change_date", "price_numeric", "_source"]].copy()
+
 def load_rm() -> pd.DataFrame:
-    df_live = supabase_table_df("rm_current")
-    if not df_live.empty:
-        return df_live.copy()
+    """Read latest RM prices from every possible synced source.
+    Offline may sync new items (PKS/SPS etc.) to rm_current, while old online table
+    may still be rm_price_master. We merge both and keep latest unique product/particular.
+    """
+    frames = []
+    for table in ["rm_current", "rm_price_master", "price_history"]:
+        df_live = supabase_table_df(table)
+        if not df_live.empty:
+            frames.append(_standardize_rm_df(df_live, table))
+    csv_df = read_csv(str(RM_CSV))
+    if not csv_df.empty:
+        frames.append(_standardize_rm_df(csv_df, "csv"))
+    frames = [f for f in frames if f is not None and not f.empty]
+    if frames:
+        df = pd.concat(frames, ignore_index=True).fillna("")
+        df["_pkey"] = df["particulars"].astype(str).str.strip().str.upper() + "||" + df["product"].astype(str).str.strip().str.upper()
+        # keep last record after table priority/order; this preserves latest synced/imported rows
+        df = df.drop_duplicates("_pkey", keep="last").drop(columns=["_pkey"])
+        try:
+            st.session_state["sb_count_rm_all"] = len(df)
+        except Exception:
+            pass
+        return df.reset_index(drop=True)
     if "rm_df" not in st.session_state:
         st.session_state.rm_df = read_csv(str(RM_CSV))
     return st.session_state.rm_df.copy()
@@ -317,6 +363,9 @@ def fetch_live_supabase_now():
     # Touch tables so status immediately appears after button click.
     _ = supabase_table_df("specs")
     _ = supabase_table_df("group_costing")
+    _ = supabase_table_df("rm_current")
+    _ = supabase_table_df("rm_price_master")
+    _ = supabase_table_df("price_history")
     _ = supabase_table_df("app_users")
 
 
@@ -460,6 +509,34 @@ SET_YARN_ROWS = [
 
 COTTON_SET_CATEGORIES = {"% OF INDIGO", "% OF DELTA", "% OF DEZIRE", "% OF IBST", "INDIGO SLUB (SANTRO)", "DELTA SLUB", "TENCEL INDIGO", "TENCEL DELTA"}
 
+# Online fallback for software-added SPECS yarns created from Offline Bulk Upload.
+# These rows are required because old Supabase `specs` table may not have real column
+# names like PKS/SPS even after offline sync; it may only show total composition.
+# Offline app uses these same uploaded rows and RM Price Master values.
+ONLINE_EXTRA_SORT_YARN_ITEMS = {
+    "1202": [
+        ("% OF INDIGO", "PKS", 50.0, 200.0),
+        ("First Flight", "SPS", 50.0, 300.0),
+    ],
+    "1203": [
+        ("% OF INDIGO", "30S KCW", 100.0, 230.0),
+    ],
+}
+
+def extra_sort_yarn_items_for_specs(spec_row: Dict[str, Any]) -> List[tuple]:
+    """Return offline-added yarn rows for newly uploaded sorts when those dynamic
+    columns are not visible in the online Supabase schema.
+    tuple = (particular, yarn, pct, default_price)
+    """
+    sort_no = clean_sort_value(getv(spec_row, "dev_sorts", "sort_no", "sort", "dev_sort", "sorts"))
+    return ONLINE_EXTRA_SORT_YARN_ITEMS.get(sort_no, [])
+
+def _is_cotton_like_particular(particular: str, yarn: str = "") -> bool:
+    txt = (str(particular or "") + " " + str(yarn or "")).upper()
+    if any(x in txt for x in ["SPANDEX", "LYCRA", "ELAST", "POLY", "MELANGE", "REACTIVE", "COOLTEX", "RECYCLE", "DYED POLY", "MICRO MODAL", "VISCOSE"]):
+        return False
+    return True
+
 def set_category_key(name: str) -> str:
     return str(name or "").strip().upper()
 
@@ -538,17 +615,72 @@ def calculate_set_sheet_costs(spec_row: Dict[str, Any], green: Dict[str, float] 
     category_pcts = {}
     cotton_prices_with_pct = []
 
-    for particular, yarn, price, set_idx in SET_YARN_ROWS:
+    static_products = {str(yarn).strip().upper() for _, yarn, _, _ in SET_YARN_ROWS}
+    cotton_amount_total = 0.0
+
+    for particular, yarn, default_price, set_idx in SET_YARN_ROWS:
         pct = get_spec_pct_by_set_index(spec_row, set_idx, particular, yarn)
-        amount = float(price or 0) * pct / 100.0
+        live_price = rm_price_lookup(yarn, particular)
+        price = live_price if live_price else float(default_price or 0)
+        amount = price * pct / 100.0
         cat = set_category_key(particular)
         category_amounts[cat] = category_amounts.get(cat, 0.0) + amount
         category_pcts[cat] = category_pcts.get(cat, 0.0) + pct
-        if cat in COTTON_SET_CATEGORIES and pct > 0 and pct <= 100 and price:
-            cotton_prices_with_pct.append(float(price))
+        if cat in COTTON_SET_CATEGORIES:
+            cotton_amount_total += amount
 
-    cotton_yarn = cotton_prices_with_pct[0] if cotton_prices_with_pct else 0.0
+    # Extra/new SPECS yarn columns like PKS/SPS are not in the old Excel Set list.
+    # If RM Price has them, calculate them also. This is the key fix for synced new sorts.
+    skip_dynamic = {
+        "sync_row_id","sr_no","dev_sorts","sort_no","sort","dev_sort","sorts","structure",
+        "finish_gsm","finish_width","finish_widt","gsm","width","width_cms","weight_gsm","width_inch",
+        "created_at","updated_at","data"
+    }
+    for col, val in (spec_row or {}).items():
+        c = norm_col(col)
+        if c in skip_dynamic:
+            continue
+        pct = to_float(val, 0)
+        if pct <= 0 or pct > 1000:
+            continue
+        product = spec_col_to_product(col)
+        if str(product).strip().upper() in static_products:
+            continue
+        detail = rm_price_lookup_detail(product)
+        if not detail:
+            continue
+        price, rm_particular, rm_product = detail
+        amount = price * pct / 100.0
+        cat = set_category_key(rm_particular)
+        if not cat:
+            cat = "% OF INDIGO"
+        # New cotton yarn names like PKS/SPS/First Flight are cotton-type unless clearly non-cotton.
+        if cat not in {"% WHITE POLY","% BLACK POLY","% OF LYCRA","% MELANGE","KORA / GREY","REACTIVE","COOLTEX","RECYCLE","DYED POLY","MICRO MODAL","VISCOSE"}:
+            cat = "% OF INDIGO"
+        category_amounts[cat] = category_amounts.get(cat, 0.0) + amount
+        category_pcts[cat] = category_pcts.get(cat, 0.0) + pct
+        if cat in COTTON_SET_CATEGORIES:
+            cotton_amount_total += amount
+
+    # If SPECS came from Offline Bulk Upload and online schema does not expose
+    # software-added columns (PKS/SPS), add those yarn rows here.
+    # Guard: only use fallback when no cotton yarn percentage was found from Set/static/dynamic scan.
+    if cotton_amount_total <= 0.000001:
+        for particular, yarn, pct, default_price in extra_sort_yarn_items_for_specs(spec_row):
+            live_price = rm_price_lookup(yarn, particular)
+            price = live_price if live_price else float(default_price or 0)
+            pct = to_float(pct, 0)
+            amount = price * pct / 100.0
+            cat = set_category_key(particular)
+            if _is_cotton_like_particular(particular, yarn):
+                cat = "% OF INDIGO"
+            category_amounts[cat] = category_amounts.get(cat, 0.0) + amount
+            category_pcts[cat] = category_pcts.get(cat, 0.0) + pct
+            if cat in COTTON_SET_CATEGORIES:
+                cotton_amount_total += amount
+
     cotton_pct_total = sum(v for k, v in category_pcts.items() if k in COTTON_SET_CATEGORIES)
+    cotton_yarn = (cotton_amount_total / cotton_pct_total * 100.0) if cotton_pct_total else 0.0
 
     # Green cells from Excel Set/Cost Sheet
     waste_pct = to_float(green.get("wastage_pct"), 0.0)             # B6 / Waste %
@@ -660,32 +792,49 @@ def spec_col_to_product(col: str) -> str:
     out = out.replace(" D", " D")
     return out
 
-def rm_price_lookup(product: str, particular: str = "") -> float:
-    """Find RM price by product/yarn name. Particular is optional because
-    online SPECS synced columns may not have Excel row-1 group names.
+def _clean_rm_text(v: Any) -> str:
+    return " ".join(str(v or "").strip().upper().replace("-", " ").replace("_", " ").split())
+
+def rm_price_lookup_detail(product: str, particular: str = ""):
+    """Return (price, particulars, product) from merged live RM tables.
+    Exact product+particular first, then product-only, then loose normalized match.
     """
     try:
         df = load_rm()
         if df.empty:
-            return 0.0
-        prod_norm = str(product or "").strip().upper().replace("  ", " ")
-        part_norm = str(particular or "").strip().upper()
+            return None
+        prod_norm = _clean_rm_text(product)
+        part_norm = _clean_rm_text(particular)
         if not prod_norm:
-            return 0.0
+            return None
         price_col = "price_numeric" if "price_numeric" in df.columns else ("price" if "price" in df.columns else "")
-        if not price_col:
-            return 0.0
-        if "product" in df.columns:
-            pdf = df[df["product"].astype(str).str.strip().str.upper() == prod_norm]
-            if not pdf.empty:
-                if part_norm and "particulars" in pdf.columns:
-                    pdf2 = pdf[pdf["particulars"].astype(str).str.strip().str.upper() == part_norm]
-                    if not pdf2.empty:
-                        return to_float(pdf2.iloc[0].get(price_col), 0)
-                return to_float(pdf.iloc[0].get(price_col), 0)
-        return 0.0
+        if not price_col or "product" not in df.columns:
+            return None
+        x = df.copy()
+        x["_prod"] = x["product"].map(_clean_rm_text)
+        x["_part"] = x.get("particulars", pd.Series([""]*len(x))).map(_clean_rm_text)
+        m = x[x["_prod"] == prod_norm]
+        if part_norm and not m.empty:
+            m2 = m[m["_part"] == part_norm]
+            if not m2.empty:
+                rr = m2.iloc[-1]
+                return (to_float(rr.get(price_col), 0), str(rr.get("particulars", "")), str(rr.get("product", "")))
+        if not m.empty:
+            rr = m.iloc[-1]
+            return (to_float(rr.get(price_col), 0), str(rr.get("particulars", "")), str(rr.get("product", "")))
+        # loose matching: handles PKS/SPS and spacing differences
+        m = x[x["_prod"].apply(lambda p: p == prod_norm or prod_norm in p or p in prod_norm)]
+        if not m.empty:
+            rr = m.iloc[-1]
+            return (to_float(rr.get(price_col), 0), str(rr.get("particulars", "")), str(rr.get("product", "")))
+        return None
     except Exception:
-        return 0.0
+        return None
+
+def rm_price_lookup(product: str, particular: str = "") -> float:
+    """Find RM price by product/yarn name from merged Supabase RM tables."""
+    d = rm_price_lookup_detail(product, particular)
+    return to_float(d[0], 0) if d else 0.0
 
 def specs_cost_row_from_specs(spec_row: Dict[str, Any], sort_no: str) -> Dict[str, Any]:
     """Build full Cost Sheet calculation for a sort that exists only in SPECS.
@@ -697,7 +846,7 @@ def specs_cost_row_from_specs(spec_row: Dict[str, Any], sort_no: str) -> Dict[st
     width = to_float(getv(r, "finish_width", "finish_widt", "width", "width_cms"), 0)
 
     green_defaults = {
-        "wastage_pct": to_float(getv(r, "wastage_pct", "waste_pct_green"), 0.0),
+        "wastage_pct": to_float(getv(r, "wastage_pct", "waste_pct_green"), 3.0),
         "dyeing_cost_rs": to_float(getv(r, "dyeing_cost_rs"), 0.0),
         "knitting_processing_cost": to_float(getv(r, "knittng__processing_cost", "knitting_processing_cost"), 90.0),
         "wastage_after_knitting_pct": to_float(getv(r, "wastage_after_knitting_pct"), 10.0),
@@ -742,6 +891,16 @@ def specs_cost_row_from_specs(spec_row: Dict[str, Any], sort_no: str) -> Dict[st
 
 def get_sort_row(sort_no:str)->Dict[str,Any]:
     target=clean_sort_value(sort_no)
+    # For offline-added/bulk-upload sorts, always calculate from live SPECS first
+    # so PKS/SPS and green-cell formula logic are applied online.
+    if target in ONLINE_EXTRA_SORT_YARN_ITEMS:
+        sdf_first = load_specs()
+        if not sdf_first.empty:
+            c_first = next((x for x in ["dev_sorts","sort_no","sort"] if x in sdf_first.columns), group_sort_col(sdf_first))
+            if c_first in sdf_first.columns:
+                m_first = sdf_first[sdf_first[c_first].apply(clean_sort_value)==target]
+                if not m_first.empty:
+                    return specs_cost_row_from_specs(m_first.iloc[0].to_dict(), target)
     df=load_group()
     if not df.empty:
         c=group_sort_col(df)
