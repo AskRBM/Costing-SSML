@@ -54,7 +54,7 @@ a.navbtn.active{background:#166fe5;color:white;border-color:#166fe5;}
 .kpi b{margin-right:14px}.k1{background:#0f8d75}.k2{background:#3159d8}.k3{background:#9a6500}.k4{background:#09a441}.k5{background:#b82e35}
 .sheet-head{background:#0b4f73;color:#fff;height:37px;display:flex;align-items:center;padding:0 10px;font-size:17px;font-weight:900;margin-top:3px}.sheet-head .sort{margin-left:auto;color:#fff200;font-size:18px;}
 .whatif{border:1px solid #a7b7c6;background:#f7fbff;padding:4px 8px;margin:0 0 2px 0}.whatif-title{font-size:13px;font-weight:900;color:#01223a;margin-bottom:4px}.country-inline-label{font-weight:800;color:#001b34;font-size:12px;padding-top:7px;white-space:nowrap}
-.table-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:3px}.tblbox{border:1px solid #b2c1cf;background:white}.tbltitle{background:#0b4f73;color:#fff;font-weight:900;padding:5px 9px;font-size:13px}.rbmtable{width:100%;border-collapse:collapse;font-size:12px;font-weight:700}.rbmtable td{border:1px solid #333;padding:4px 7px}.rbmtable td:nth-child(2){font-weight:700}.row-green td{background:#91f0a0}.row-red td:first-child{background:#ff5555;color:white}.row-red td:nth-child(2){background:#ffc7c7}.row-yellow td{background:#fff3b5}.row-blue td{background:#eef6ff}.footer{position:fixed;bottom:0;left:0;right:0;background:#0b4f73;color:#fff;padding:8px 20px;font-size:13px;font-weight:800;display:flex;justify-content:space-between;z-index:10}.footer b{color:#ffe600}.content-pad{padding-bottom:28px}
+.table-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:3px}.tblbox{border:1px solid #b2c1cf;background:white}.tbltitle{background:#0b4f73;color:#fff;font-weight:900;padding:3px 8px;font-size:13px;display:flex;align-items:center;gap:5px;min-height:32px;overflow:hidden}.tbltitle-main{white-space:nowrap;margin-right:6px}.tbl-kpis{display:flex;align-items:center;gap:4px;flex-wrap:nowrap;min-width:0;overflow:hidden}.tbl-kpi{height:23px;color:#fff;font-weight:900;display:flex;align-items:center;justify-content:center;padding:0 6px;font-size:9px;white-space:nowrap;border-radius:3px;line-height:1.05}.tbl-kpi b{margin-right:4px}.rbmtable{width:100%;border-collapse:collapse;font-size:12px;font-weight:700}.rbmtable td{border:1px solid #333;padding:4px 7px}.rbmtable td:nth-child(2){font-weight:700}.row-green td{background:#91f0a0}.row-red td:first-child{background:#ff5555;color:white}.row-red td:nth-child(2){background:#ffc7c7}.row-yellow td{background:#fff3b5}.row-blue td{background:#eef6ff}.footer{position:fixed;bottom:0;left:0;right:0;background:#0b4f73;color:#fff;padding:8px 20px;font-size:13px;font-weight:800;display:flex;justify-content:space-between;z-index:10}.footer b{color:#ffe600}.content-pad{padding-bottom:28px}
 .stButton button{height:30px!important;min-height:30px!important;padding:0 6px!important;font-weight:800;border-radius:4px;margin:0!important;white-space:nowrap!important;font-size:11px!important;line-height:1!important}.stSelectbox label,.stNumberInput label,.stTextInput label{font-weight:800;color:#001b34;font-size:12px!important}.stSelectbox div,.stTextInput input,.stNumberInput input{font-size:13px!important}.stNumberInput button{height:32px!important;min-height:32px!important}.warn{background:#fde9ed;color:#9b1230;padding:10px;border-radius:6px;margin:10px 0}.ok{background:#e8fff0;color:#006a24;padding:10px;border-radius:6px;margin:10px 0}
 .stButton button[kind="primary"]{background:#ff4d4d!important;border-color:#ff4d4d!important;color:white!important}
 
@@ -232,30 +232,15 @@ def header(title="Costing"):
 
     visible=[m for m in MODULES if has_perm(m)]
     if visible:
-        r = {}
-        try:
-            r = get_sort_row(s) if s else {}
-        except Exception:
-            r = {}
         st.markdown('<div class="nav-line-holder">', unsafe_allow_html=True)
-        # Same line: module buttons first, summary boxes after it. Width is based on text size.
+        # Module buttons only. KPI boxes are now shown inside the dark-blue table headers.
         module_weights = [max(0.62, min(0.98, 0.38 + len(m) * 0.045)) for m in visible]
-        cols = st.columns(module_weights + [0.66,0.70,0.76,0.76,0.66], gap="small")
+        cols = st.columns(module_weights, gap="small")
         for i, m in enumerate(visible):
             btn_type = "primary" if st.session_state.get("module") == m else "secondary"
             if cols[i].button(m, key=f"nav_btn_{m}", type=btn_type, use_container_width=True):
                 st.session_state.module = m
                 st.rerun()
-        offset = len(visible)
-        kpi_html = [
-            f'<div class="mini-kpi k1"><b>Structure</b>{html.escape(fmt(getv(r,"structure")))}</div>',
-            f'<div class="mini-kpi k2"><b>Finish GSM</b>{html.escape(fmt(getv(r,"finish_gsm")))}</div>',
-            f'<div class="mini-kpi k3"><b>Finish Width</b>{html.escape(fmt(getv(r,"finish_width")))}</div>',
-            f'<div class="mini-kpi k4"><b>Selling Price</b>{html.escape(fmt(getv(r,"selling_price")))}</div>',
-            f'<div class="mini-kpi k5"><b>USD/KG</b>{html.escape(fmt(getv(r,"total_cost_usd__kg","price_usdkg")))}</div>',
-        ]
-        for i, h in enumerate(kpi_html):
-            cols[offset+i].markdown(h, unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
 def login_page():
@@ -354,11 +339,12 @@ def row_class(label:str)->str:
     if label in ["Raw Material Cost","Costing","Selling Price","Price USD/KG","Total Cost INR/KG","Total Cost USD/KG"]: return "row-yellow"
     return "row-blue" if len(label)%2 else ""
 
-def html_table(title:str, rows:List[tuple])->str:
+def html_table(title:str, rows:List[tuple], header_extra:str="")->str:
     trs=[]
     for label,val in rows:
         trs.append(f'<tr class="{row_class(label)}"><td>{html.escape(label)}</td><td>{html.escape(fmt(val))}</td></tr>')
-    return f'<div class="tblbox"><div class="tbltitle">▣ {html.escape(title)}</div><table class="rbmtable">{"".join(trs)}</table></div>'
+    extra_html = f'<div class="tbl-kpis">{header_extra}</div>' if header_extra else ''
+    return f'<div class="tblbox"><div class="tbltitle"><span class="tbltitle-main">▣ {html.escape(title)}</span>{extra_html}</div><table class="rbmtable">{"".join(trs)}</table></div>'
 
 # ---------- pages ----------
 def cost_sheet_page():
@@ -445,7 +431,16 @@ def cost_sheet_page():
         ("LC Days / Interest",getv(row,'lc_days_interest','lc_days_interest_amount','lc_days__interest_15_pm')),
         ("Total Cost INR/KG",getv(row,'total_cost_pricefreightcomlc_int_inr__kg','total_cost_pricefreightcomlc_int','total_cost_inr_kg','total_cost_inr')),("Total Cost USD/KG",getv(row,'total_cost_usd__kg')),
     ]
-    st.markdown(f'<div class="table-grid">{html_table("Cost Build-up",cost_rows)}{html_table("Export / Price Calculation",export_rows)}</div>', unsafe_allow_html=True)
+    cost_header_kpis = (
+        f'<div class="tbl-kpi k1"><b>Structure</b>{html.escape(fmt(getv(row,"structure")))}</div>'
+        f'<div class="tbl-kpi k2"><b>Finish GSM</b>{html.escape(fmt(getv(row,"finish_gsm")))}</div>'
+        f'<div class="tbl-kpi k3"><b>Finish Width</b>{html.escape(fmt(getv(row,"finish_width")))}</div>'
+    )
+    export_header_kpis = (
+        f'<div class="tbl-kpi k4"><b>Selling Price</b>{html.escape(fmt(getv(row,"selling_price")))}</div>'
+        f'<div class="tbl-kpi k5"><b>USD/KG</b>{html.escape(fmt(getv(row,"total_cost_usd__kg","price_usdkg")))}</div>'
+    )
+    st.markdown(f'<div class="table-grid">{html_table("Cost Build-up",cost_rows,cost_header_kpis)}{html_table("Export / Price Calculation",export_rows,export_header_kpis)}</div>', unsafe_allow_html=True)
     st.markdown('<div class="footer"><span>Publisher: <b>RBM Textile Solutions</b></span><span>Offline Textile Costing • Actual Excel Data • Print Preview • Backup</span><span>Made in India 🇮🇳</span></div><div class="content-pad"></div>', unsafe_allow_html=True)
 
 def simple_cost_page(kind:str):
