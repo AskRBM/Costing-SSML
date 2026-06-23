@@ -37,6 +37,9 @@ st.markdown("""
 .rbm-top{background:#0b4f73;color:#fff;height:78px;display:flex;align-items:center;gap:10px;padding:0 10px;border-bottom:3px solid #d6eef8;overflow:hidden;}
 .logo{width:145px;min-width:145px}.logo .big{font-size:29px;font-weight:900;line-height:28px}.logo .sub{font-size:9px;font-weight:800;}
 .titlebox{background:#108d76;height:54px;width:250px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;border-bottom:4px solid #d3f5ee;}
+.top-kpi-row{display:flex;gap:4px;align-items:center;flex:1;min-width:0;overflow:hidden;}
+.top-kpi{height:28px;color:white;font-weight:900;display:flex;align-items:center;padding:0 8px;font-size:11px;white-space:nowrap;border-radius:2px;min-width:auto;width:auto;}
+.top-kpi b{margin-right:8px}.top-sort{margin-left:auto;color:#fff200;font-size:15px;font-weight:900;white-space:nowrap;padding-left:8px;}
 .nav{display:flex;gap:6px;align-items:center;flex-wrap:nowrap;flex:1;justify-content:center;}
 a.navbtn{text-decoration:none;background:#fff;color:#001b34;border:1px solid #b8cee8;border-radius:5px;padding:9px 15px;font-size:14px;font-weight:900;white-space:nowrap;box-shadow:0 1px 2px rgba(0,0,0,.15)}
 a.navbtn.active{background:#166fe5;color:white;border-color:#166fe5;}
@@ -205,11 +208,28 @@ def do_logout():
 
 def header(title="Costing"):
     role=html.escape(str(st.session_state.role or "")); user=html.escape(str(st.session_state.username or ""))
+    # Top header summary replaces the old green "Costing" title box.
+    top_summary = '<div style="flex:1"></div>'
+    try:
+        s = st.session_state.get("selected_sort", "")
+        r = get_sort_row(s) if s else {}
+        if r:
+            top_summary = (
+                '<div class="top-kpi-row">'
+                f'<div class="top-kpi k1"><b>Structure</b> {html.escape(fmt(getv(r,"structure")))}</div>'
+                f'<div class="top-kpi k2"><b>Finish GSM</b> {html.escape(fmt(getv(r,"finish_gsm")))}</div>'
+                f'<div class="top-kpi k3"><b>Finish Width</b> {html.escape(fmt(getv(r,"finish_width")))}</div>'
+                f'<div class="top-kpi k4"><b>Selling Price</b> {html.escape(fmt(getv(r,"selling_price")))}</div>'
+                f'<div class="top-kpi k5"><b>USD/KG</b> {html.escape(fmt(getv(r,"total_cost_usd__kg","price_usdkg")))}</div>'
+                f'<div class="top-sort">SORT NO: {html.escape(str(s))}</div>'
+                '</div>'
+            )
+    except Exception:
+        top_summary = '<div style="flex:1"></div>'
     st.markdown(f"""
 <div class="rbm-top">
   <div class="logo"><div class="big">RBM AI</div><div class="sub">Robotic Business Management</div></div>
-  <div class="titlebox">{html.escape(title)}</div>
-  <div style="flex:1"></div>
+  {top_summary}
   <div class="top-actions"><span class="sync">☁ Sync Now</span><span class="on">⦿ ON</span></div>
   <div class="userbox">User: {user} | Role: {role}</div>
 </div>
@@ -218,13 +238,13 @@ def header(title="Costing"):
     # Compact button row directly under dark-blue header. These are real Streamlit
     # buttons, not HTML links; session_state remains alive on every module click.
     if visible:
-        cols = st.columns([max(0.45, min(0.90, 0.28 + len(m)*0.035)) for m in visible] + [0.55, 6.0], gap="small")
+        cols = st.columns([1]*len(visible)+[0.9], gap="small")
         for i, m in enumerate(visible):
             btn_type = "primary" if st.session_state.get("module") == m else "secondary"
-            if cols[i].button(m, key=f"nav_btn_{m}", type=btn_type, use_container_width=False):
+            if cols[i].button(m, key=f"nav_btn_{m}", type=btn_type, use_container_width=True):
                 st.session_state.module = m
                 st.rerun()
-        if cols[len(visible)].button("Logout", key="nav_logout_btn", use_container_width=False):
+        if cols[-1].button("Logout", key="nav_logout_btn", use_container_width=True):
             do_logout(); st.rerun()
 
 def login_page():
@@ -360,16 +380,6 @@ def cost_sheet_page():
     row = apply_whatif(base, applied) if applied else base
 
     st.markdown(f'<div class="sheet-head"><span>RBM TEXTILE COST SHEET</span><span class="sort">SORT NO: {html.escape(str(sort))}</span></div>', unsafe_allow_html=True)
-    st.markdown(f"""
-<div class="card-row">
-  <div class="kpi k1"><b>Structure</b> {html.escape(fmt(getv(row,'structure')))}</div>
-  <div class="kpi k2"><b>Finish GSM</b> {html.escape(fmt(getv(row,'finish_gsm')))}</div>
-  <div class="kpi k3"><b>Finish Width</b> {html.escape(fmt(getv(row,'finish_width')))}</div>
-  <div class="kpi k4"><b>Selling Price</b> {html.escape(fmt(getv(row,'selling_price')))}</div>
-  <div class="kpi k5"><b>USD/KG</b> {html.escape(fmt(getv(row,'total_cost_usd__kg','price_usdkg')))}</div>
-</div>
-""", unsafe_allow_html=True)
-
     with st.form(f"whatif_form_{sort}", clear_on_submit=False):
         st.markdown('<div class="whatif-title">What-If Analysis</div>', unsafe_allow_html=True)
         cols=st.columns(9, gap="small")
