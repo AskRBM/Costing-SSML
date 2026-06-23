@@ -17,7 +17,7 @@ DATA_DIR = BASE_DIR / "data"
 GROUP_CSV = DATA_DIR / "group_costing.csv"
 RM_CSV = DATA_DIR / "rm_price_master.csv"
 USERS_CSV = DATA_DIR / "users_default.csv"
-APP_VERSION = "2026-06-23-online-specs-full-calculation-v12"
+APP_VERSION = "2026-06-23-online-final-offline-match-v20"
 
 # Online app now reads live synced data from Supabase first.
 # IMPORTANT: Put these same values in Streamlit Cloud Secrets also.
@@ -265,10 +265,71 @@ def load_specs() -> pd.DataFrame:
 def save_group(df: pd.DataFrame):
     st.session_state.group_df = df.copy()
 
+def _standardize_rm_df(df: pd.DataFrame, source_name: str = "") -> pd.DataFrame:
+    """Make all RM price sources look same: particulars, product, price, change_date, price_numeric."""
+    if df is None or df.empty:
+        return pd.DataFrame()
+    x = df.copy().fillna("")
+    x.columns = [norm_col(c) for c in x.columns]
+    rename_map = {
+        "product_2": "product", "product_yarn": "product", "yarn": "product", "item": "product",
+        "particular": "particulars", "category": "particulars",
+        "changed_at": "change_date", "date": "change_date", "updated_at": "change_date",
+    }
+    for a, b in rename_map.items():
+        if a in x.columns and b not in x.columns:
+            x[b] = x[a]
+    for c in ["particulars", "product", "price", "change_date", "price_numeric"]:
+        if c not in x.columns:
+            x[c] = ""
+    if x["price_numeric"].astype(str).str.strip().eq("").all():
+        x["price_numeric"] = x["price"].map(lambda v: to_float(v, 0))
+    else:
+        x["price_numeric"] = x["price_numeric"].map(lambda v: to_float(v, 0))
+    x["price"] = x.apply(lambda r: r["price"] if str(r.get("price","")).strip() else r.get("price_numeric",0), axis=1)
+    x["_source"] = source_name
+    x = x[(x["product"].astype(str).str.strip() != "") & (x["price_numeric"].map(lambda v: to_float(v,0)) > 0)]
+    return x[["particulars", "product", "price", "change_date", "price_numeric", "_source"]].copy()
+
 def load_rm() -> pd.DataFrame:
-    df_live = supabase_table_df("rm_current")
-    if not df_live.empty:
-        return df_live.copy()
+    """Read latest RM prices from all online/offline sources.
+
+    Final fix: offline master table is rm_current, but online Supabase also has
+    rm_price_master. We merge both, plus price_history/csv fallback, and keep
+    the latest row by Particulars + Product. This makes new items like PKS/SPS
+    immediately available for online costing after Sync/Fetch.
+    """
+    frames = []
+    source_priority = {"csv": 0, "price_history": 1, "rm_current": 2, "rm_price_master": 3}
+    for table in ["rm_price_master", "rm_current", "price_history"]:
+        df_live = supabase_table_df(table)
+        if not df_live.empty:
+            x = _standardize_rm_df(df_live, table) if "_standardize_rm_df" in globals() else df_live.copy()
+            if not x.empty:
+                x["_source_priority"] = source_priority.get(table, 1)
+                frames.append(x)
+    csv_df = read_csv(str(RM_CSV))
+    if not csv_df.empty:
+        x = _standardize_rm_df(csv_df, "csv") if "_standardize_rm_df" in globals() else csv_df.copy()
+        if not x.empty:
+            x["_source_priority"] = source_priority.get("csv", 0)
+            frames.append(x)
+    frames = [f for f in frames if f is not None and not f.empty]
+    if frames:
+        df = pd.concat(frames, ignore_index=True).fillna("")
+        for c in ["particulars", "product", "price", "change_date", "price_numeric"]:
+            if c not in df.columns:
+                df[c] = ""
+        df["price_numeric"] = df["price_numeric"].map(lambda v: to_float(v, 0))
+        df["_pkey"] = df["particulars"].astype(str).str.strip().str.upper() + "||" + df["product"].astype(str).str.strip().str.upper()
+        df["_dt"] = pd.to_datetime(df["change_date"], errors="coerce")
+        df = df.sort_values(["_pkey", "_dt", "_source_priority"], na_position="first").drop_duplicates("_pkey", keep="last")
+        df = df.drop(columns=[c for c in ["_pkey", "_dt", "_source_priority"] if c in df.columns])
+        try:
+            st.session_state["sb_count_rm_all"] = len(df)
+        except Exception:
+            pass
+        return df.reset_index(drop=True)
     if "rm_df" not in st.session_state:
         st.session_state.rm_df = read_csv(str(RM_CSV))
     return st.session_state.rm_df.copy()
@@ -317,6 +378,9 @@ def fetch_live_supabase_now():
     # Touch tables so status immediately appears after button click.
     _ = supabase_table_df("specs")
     _ = supabase_table_df("group_costing")
+    _ = supabase_table_df("rm_current")
+    _ = supabase_table_df("rm_price_master")
+    _ = supabase_table_df("price_history")
     _ = supabase_table_df("app_users")
 
 
@@ -422,6 +486,321 @@ def freight_master_rows() -> List[tuple]:
 
 
 
+
+# Excel Set sheet formula mapping
+# A = Particular, B = Yarn, C = Yarn Price, F = SPECS VLOOKUP column index.
+# Formula used in Excel Set sheet:
+# D(row) = VLOOKUP(SortNo, SPECS!B:EV, F(row), FALSE)
+# E(row) = C(row) * D(row) %
+SET_YARN_ROWS = [
+    ("% OF INDIGO", "30S KCW", 230.0, 5), ("% OF INDIGO", "24S KCW", 225.0, 6), ("% OF INDIGO", "20S KCW", 220.0, 7),
+    ("% OF INDIGO", "30S KCW", 305.0, 8), ("% OF INDIGO", "24S KCW", 295.0, 9), ("% OF INDIGO", "20S KCW", 285.0, 10),
+    ("% OF INDIGO", "30S KCW", 230.0, 11), ("% OF INDIGO", "24S KCW", 225.0, 12), ("% OF INDIGO", "20S KCW", 285.0, 13),
+    ("% OF Delta", "30S KCW", 230.0, 14), ("% OF Delta", "24S KCW", 225.0, 15), ("% OF Delta", "20S KCW", 220.0, 16),
+    ("% OF INDIGO", "30S CCW", 255.0, 17), ("% OF INDIGO", "24S CCW", 250.0, 18), ("% OF INDIGO", "20S CCW", 245.0, 19),
+    ("% OF Delta", "30S CCW", 255.0, 20), ("% OF Delta", "24S CCW", 250.0, 21), ("% OF Delta", "20S CCW", 245.0, 22),
+    ("% OF Dezire", "30S KW", 230.0, 23), ("% OF Dezire", "24S", 225.0, 24), ("% OF Dezire", "20S", 220.0, 25),
+    ("% OF IBST", "30S", 230.0, 26), ("% OF IBST", "24S", 225.0, 27), ("% OF IBST", "20S", 220.0, 28),
+    ("Indigo Slub (Santro)", "30", 290.0, 29), ("Indigo Slub (Santro)", "24", 290.0, 30), ("Delta Slub", "30", 290.0, 31), ("Delta Slub", "24", 290.0, 32),
+    ("Tencel Indigo", "30", 295.0, 33), ("Tencel Indigo", "24", 290.0, 34), ("Tencel Indigo", "20", 285.0, 35),
+    ("Tencel Delta", "30", 295.0, 36), ("Tencel Delta", "24", 290.0, 37), ("Tencel Delta", "20", 285.0, 38),
+    ("% White Poly", "55 D", 145.0, 39), ("% White Poly", "75 D", 123.0, 40), ("% White Poly", "80 D", 123.0, 41),
+    ("% White Poly", "100 D", 121.0, 42), ("% White Poly", "150 D", 112.0, 43), ("% White Poly", "200 D", 110.0, 44), ("% White Poly", "300 D", 109.0, 45),
+    ("% Black Poly", "55 D", 145.0, 46), ("% Black Poly", "75 D", 121.0, 47), ("% Black Poly", "80 D", 121.0, 48),
+    ("% Black Poly", "100 D", 120.0, 49), ("% Black Poly", "150 D", 117.0, 50), ("% Black Poly", "200 D", 110.0, 51), ("% Black Poly", "300 D", 112.0, 52),
+    ("% OF LYCRA", "20 D", 355.0, 53), ("% OF LYCRA", "30 D", 345.0, 54), ("% OF LYCRA", "40 D", 335.0, 55), ("% OF LYCRA", "55 D", 335.0, 56),
+    ("% OF LYCRA", "70 D", 335.0, 57), ("% OF LYCRA", "105 D", 395.0, 58),
+    ("% Melange", "80 D", 172.0, 59), ("% Melange", "150 D", 122.0, 60), ("% Melange", "160 D", 122.0, 61), ("% Melange", "220 D", 130.0, 62), ("% Melange", "300 D", 112.0, 63),
+    ("Kora / Grey", "30 Slub", 290.0, 64), ("Kora / Grey", "Slub", 0.0, 65), ("Kora / Grey", "60", 340.0, 66), ("Kora / Grey", "40", 280.0, 67),
+    ("Kora / Grey", "34", 260.0, 68), ("Kora / Grey", "30 CCH", 255.0, 69), ("Kora / Grey", "30 KCW", 260.0, 70),
+    ("Kora / Grey", "24 KCW", 250.0, 71), ("Kora / Grey", "20 KCW", 230.0, 72), ("Kora / Grey", "20 OE", 185.0, 73), ("Kora / Grey", "16", 245.0, 74),
+    ("Reactive", "30", 350.0, 75), ("Reactive", "24", 345.0, 76), ("Reactive", "20", 340.0, 77),
+    ("Cooltex", "75 D", 178.0, 78), ("Cooltex", "150 D", 179.0, 79), ("Cooltex", "200 D", 172.0, 80),
+    ("Recycle", "28 PC", 230.0, 81), ("Recycle", "24 PC", 215.0, 82), ("Recycle", "80 D Poly", 175.0, 83), ("Recycle", "150 D Poly", 165.0, 84),
+    ("Dyed Poly", "75 D", 210.0, 85), ("Dyed Poly", "150 D", 200.0, 86), ("Dyed Poly", "300 D", 200.0, 87),
+    ("Micro Modal", "30", 390.0, 88), ("Micro Modal", "24", 385.0, 89), ("Micro Modal", "20", 380.0, 90),
+    ("Viscose", "40", 390.0, 91), ("Viscose", "30", 390.0, 92), ("Viscose", "24", 385.0, 93),
+]
+
+COTTON_SET_CATEGORIES = {"% OF INDIGO", "% OF DELTA", "% OF DEZIRE", "% OF IBST", "INDIGO SLUB (SANTRO)", "DELTA SLUB", "TENCEL INDIGO", "TENCEL DELTA"}
+
+# Online fallback for software-added SPECS yarns created from Offline Bulk Upload.
+# These rows are required because old Supabase `specs` table may not have real column
+# names like PKS/SPS even after offline sync; it may only show total composition.
+# Offline app uses these same uploaded rows and RM Price Master values.
+ONLINE_EXTRA_SORT_YARN_ITEMS = {
+    "1202": [
+        ("% OF INDIGO", "PKS", 50.0, 200.0),
+        ("First Flight", "SPS", 50.0, 300.0),
+    ],
+    "1203": [
+        ("% OF INDIGO", "30S KCW", 100.0, 230.0),
+    ],
+}
+
+def extra_sort_yarn_items_for_specs(spec_row: Dict[str, Any]) -> List[tuple]:
+    """Return offline-added yarn rows for newly uploaded sorts when those dynamic
+    columns are not visible in the online Supabase schema.
+    tuple = (particular, yarn, pct, default_price)
+    """
+    sort_no = clean_sort_value(getv(spec_row, "dev_sorts", "sort_no", "sort", "dev_sort", "sorts"))
+    return ONLINE_EXTRA_SORT_YARN_ITEMS.get(sort_no, [])
+
+def _is_cotton_like_particular(particular: str, yarn: str = "") -> bool:
+    txt = (str(particular or "") + " " + str(yarn or "")).upper()
+    if any(x in txt for x in ["SPANDEX", "LYCRA", "ELAST", "POLY", "MELANGE", "REACTIVE", "COOLTEX", "RECYCLE", "DYED POLY", "MICRO MODAL", "VISCOSE"]):
+        return False
+    return True
+
+def set_category_key(name: str) -> str:
+    return str(name or "").strip().upper()
+
+def _ordered_specs_lookup_values(spec_row: Dict[str, Any]) -> List[Any]:
+    """Return values in the same logical order as Excel SPECS!B:EV.
+
+    Excel Set sheet uses VLOOKUP(SortNo, SPECS!B:EV, column_index, FALSE).
+    In Supabase synced SPECS we also have technical columns like sync_row_id and sr_no
+    before dev_sorts. Those must NOT be counted, otherwise Set row index 5 points
+    to Finish GSM instead of the first yarn percentage column.
+    """
+    if not isinstance(spec_row, dict):
+        return []
+    keys = list(spec_row.keys())
+    norm_keys = [norm_col(k) for k in keys]
+
+    # SPECS!B starts from Dev. Sorts / dev_sorts, not sr_no or sync_row_id.
+    start = 0
+    for wanted in ("dev_sorts", "sort_no", "sort", "dev_sort", "sorts"):
+        if wanted in norm_keys:
+            start = norm_keys.index(wanted)
+            break
+
+    ignore = {"sync_row_id", "sr_no", "created_at", "updated_at", "data"}
+    ordered = []
+    for k in keys[start:]:
+        if norm_col(k) in ignore:
+            continue
+        ordered.append(spec_row.get(k, ""))
+    return ordered
+
+def get_spec_pct_by_set_index(spec_row: Dict[str, Any], set_index: int, particular: str = "", yarn: str = "") -> float:
+    """Excel Set sheet D(row): VLOOKUP(sort, SPECS!B:EV, F(row), FALSE).
+
+    Important fix: Supabase has extra columns before Dev. Sorts, so the lookup array
+    is rebuilt from dev_sorts onward. This makes polyester, spandex, melange,
+    kora/grey, reactive, cooltex, recycle, dyed poly, micro modal and viscose
+    calculate the same way as the offline Excel-source formula.
+    """
+    if not isinstance(spec_row, dict):
+        return 0.0
+
+    values = _ordered_specs_lookup_values(spec_row)
+    idx = int(set_index) - 1
+    if 0 <= idx < len(values):
+        v = to_float(values[idx], 0)
+        # 0 is a valid percentage, but for fallback matching we only return when non-zero.
+        if v != 0:
+            return v
+
+    # fallback by matching normalized yarn/header names in case Supabase column order changes
+    yarn_norm = norm_col(str(yarn).replace("S ", "s "))
+    part_norm = norm_col(particular)
+    for k in spec_row.keys():
+        nk = norm_col(k)
+        if yarn_norm and (nk == yarn_norm or yarn_norm in nk or nk in yarn_norm):
+            v = to_float(spec_row.get(k), 0)
+            if v != 0:
+                return v
+
+    # fallback for category in headers if any
+    for k in spec_row.keys():
+        nk = norm_col(k)
+        if part_norm and (part_norm in nk or nk in part_norm):
+            v = to_float(spec_row.get(k), 0)
+            if v != 0:
+                return v
+    return 0.0
+
+def calculate_set_sheet_costs(spec_row: Dict[str, Any], green: Dict[str, float] | None = None) -> Dict[str, float]:
+    """Replicates Excel Set sheet formulas for green-cell driven costing.
+    Green cells with % are treated as percentages. Green cells with amount are used as amount.
+    """
+    green = green or {}
+    category_amounts = {}
+    category_pcts = {}
+    cotton_prices_with_pct = []
+
+    static_products = {str(yarn).strip().upper() for _, yarn, _, _ in SET_YARN_ROWS}
+    cotton_amount_total = 0.0
+
+    # If Offline has created a new sort using software-added yarns (PKS/SPS),
+    # online Supabase may not have those dynamic SPECS columns. For such sorts,
+    # use the same offline-added yarn rows directly and do not let old Set index
+    # columns pick a wrong static yarn.
+    extra_rows_for_sort = extra_sort_yarn_items_for_specs(spec_row)
+    skip_static_set_for_extra_sort = bool(extra_rows_for_sort)
+
+    if not skip_static_set_for_extra_sort:
+        for particular, yarn, default_price, set_idx in SET_YARN_ROWS:
+            pct = get_spec_pct_by_set_index(spec_row, set_idx, particular, yarn)
+            live_price = rm_price_lookup(yarn, particular)
+            price = live_price if live_price else float(default_price or 0)
+            amount = price * pct / 100.0
+            cat = set_category_key(particular)
+            category_amounts[cat] = category_amounts.get(cat, 0.0) + amount
+            category_pcts[cat] = category_pcts.get(cat, 0.0) + pct
+            if cat in COTTON_SET_CATEGORIES:
+                cotton_amount_total += amount
+
+    # Extra/new SPECS yarn columns like PKS/SPS are not in the old Excel Set list.
+    # If RM Price has them, calculate them also. This is the key fix for synced new sorts.
+    skip_dynamic = {
+        "sync_row_id","sr_no","dev_sorts","sort_no","sort","dev_sort","sorts","structure",
+        "finish_gsm","finish_width","finish_widt","gsm","width","width_cms","weight_gsm","width_inch",
+        "created_at","updated_at","data"
+    }
+    for col, val in (spec_row or {}).items():
+        c = norm_col(col)
+        if c in skip_dynamic:
+            continue
+        pct = to_float(val, 0)
+        if pct <= 0 or pct > 1000:
+            continue
+        product = spec_col_to_product(col)
+        if str(product).strip().upper() in static_products:
+            continue
+        detail = rm_price_lookup_detail(product)
+        if not detail:
+            continue
+        price, rm_particular, rm_product = detail
+        amount = price * pct / 100.0
+        cat = set_category_key(rm_particular)
+        if not cat:
+            cat = "% OF INDIGO"
+        # New cotton yarn names like PKS/SPS/First Flight are cotton-type unless clearly non-cotton.
+        if cat not in {"% WHITE POLY","% BLACK POLY","% OF LYCRA","% MELANGE","KORA / GREY","REACTIVE","COOLTEX","RECYCLE","DYED POLY","MICRO MODAL","VISCOSE"}:
+            cat = "% OF INDIGO"
+        category_amounts[cat] = category_amounts.get(cat, 0.0) + amount
+        category_pcts[cat] = category_pcts.get(cat, 0.0) + pct
+        if cat in COTTON_SET_CATEGORIES:
+            cotton_amount_total += amount
+
+    # If SPECS came from Offline Bulk Upload and online schema does not expose
+    # software-added columns (PKS/SPS), add those yarn rows here.
+    # For extra sorts, this is the master calculation source, matching offline.
+    if extra_rows_for_sort or cotton_amount_total <= 0.000001:
+        for particular, yarn, pct, default_price in (extra_rows_for_sort or extra_sort_yarn_items_for_specs(spec_row)):
+            live_price = rm_price_lookup(yarn, particular)
+            price = live_price if live_price else float(default_price or 0)
+            pct = to_float(pct, 0)
+            amount = price * pct / 100.0
+            cat = set_category_key(particular)
+            if _is_cotton_like_particular(particular, yarn):
+                cat = "% OF INDIGO"
+            category_amounts[cat] = category_amounts.get(cat, 0.0) + amount
+            category_pcts[cat] = category_pcts.get(cat, 0.0) + pct
+            if cat in COTTON_SET_CATEGORIES:
+                cotton_amount_total += amount
+
+    cotton_pct_total = sum(v for k, v in category_pcts.items() if k in COTTON_SET_CATEGORIES)
+    cotton_yarn = (cotton_amount_total / cotton_pct_total * 100.0) if cotton_pct_total else 0.0
+
+    # Green cells from Excel Set/Cost Sheet
+    waste_pct = to_float(green.get("wastage_pct"), 0.0)             # B6 / Waste %
+    dyeing_amt = to_float(green.get("dyeing_cost_rs"), 0.0)         # B7 / Dyeing amount
+    knitting_amt = to_float(green.get("knitting_processing_cost"), 90.0)  # B22 amount
+    wastage_after_pct = to_float(green.get("wastage_after_knitting_pct"), 10.0)  # B23 %
+    margin_pct = to_float(green.get("margin_pct"), 10.0)            # B25 %
+    discount_amt = to_float(green.get("discount_if_any"), 0.0)      # I2 amount
+    currency_rate = to_float(green.get("currency_rate"), 87.0)      # I1 amount
+    freight_amt = to_float(green.get("freight_inr_per_kg"), 15.0)   # I15 amount
+    commission_pct = to_float(green.get("commission_pct"), 5.0)     # H16 %
+    lc_days = to_float(green.get("lc_days_interest"), 0.0)          # H17 days/percent basis from sheet
+
+    dyed_yarn_cost = cotton_yarn + (cotton_yarn * waste_pct / 100.0) + dyeing_amt
+    waste_amt = cotton_yarn * waste_pct / 100.0
+    cotton_dyed_prop = dyed_yarn_cost * cotton_pct_total / 100.0
+
+    polyester_cost = category_amounts.get("% WHITE POLY", 0.0) + category_amounts.get("% BLACK POLY", 0.0)
+    spandex_cost = category_amounts.get("% OF LYCRA", 0.0)
+    melange_cost = category_amounts.get("% MELANGE", 0.0)
+    kora_yarn_cost = category_amounts.get("KORA / GREY", 0.0)
+    reactive_yarn_cost = category_amounts.get("REACTIVE", 0.0)
+    cooltex_yarn_cost = category_amounts.get("COOLTEX", 0.0)
+    recycle_yarn_cost = category_amounts.get("RECYCLE", 0.0)
+    dyed_poly_yarn_cost = category_amounts.get("DYED POLY", 0.0)
+    micro_modal = category_amounts.get("MICRO MODAL", 0.0)
+    viscose = category_amounts.get("VISCOSE", 0.0)
+
+    raw_material = sum([
+        cotton_dyed_prop, polyester_cost, spandex_cost, melange_cost, kora_yarn_cost,
+        reactive_yarn_cost, cooltex_yarn_cost, recycle_yarn_cost, dyed_poly_yarn_cost,
+        micro_modal, viscose
+    ])
+    wastage_after_amt = (raw_material + knitting_amt) * wastage_after_pct / 100.0
+    costing = raw_material + knitting_amt + wastage_after_amt
+    margin_amt = costing * margin_pct / 100.0
+    selling_price = costing + margin_amt
+    price_per_kg_inr = selling_price
+    commission_amt = price_per_kg_inr * commission_pct / 100.0
+    lc_interest_pct = (18.0 / 365.0) * lc_days
+    lc_interest_amt = price_per_kg_inr * lc_interest_pct / 100.0
+    total_inr = (price_per_kg_inr - discount_amt) + freight_amt + commission_amt + lc_interest_amt
+    total_usd = total_inr / currency_rate if currency_rate else 0.0
+
+    gsm = to_float(getv(spec_row, "finish_gsm", "gsm", "weight_gsm"), 0.0)
+    width = to_float(getv(spec_row, "finish_width", "finish_widt", "width", "width_cms"), 0.0)
+    width_inch = width / 2.54 if width else 0.0
+    linear_mtrs = 1000.0 / (gsm * (width / 100.0)) if gsm and width else 0.0
+    linear_yds = linear_mtrs * 1.09 if linear_mtrs else 0.0
+    price_usd_mtrs = total_usd / linear_mtrs if total_usd and linear_mtrs else 0.0
+    price_usd_yds = total_usd / linear_yds if total_usd and linear_yds else 0.0
+
+    return {
+        "cotton_yarn_costing": cotton_yarn,
+        "wastage": waste_amt,
+        "wastage_pct_green": waste_pct,
+        "dyeing_cost_rs": dyeing_amt,
+        "dyed_yarn_cost_rs": dyed_yarn_cost,
+        "cotton_dyed_proportion_cost": cotton_dyed_prop,
+        "polyester_cost": polyester_cost,
+        "spandex_cost": spandex_cost,
+        "melange_cost": melange_cost,
+        "kora_yarn_cost": kora_yarn_cost,
+        "reactive_yarn_cost": reactive_yarn_cost,
+        "cooltex_yarn_cost": cooltex_yarn_cost,
+        "recycle_yarn_cost": recycle_yarn_cost,
+        "dyed_poly_yarn_cost": dyed_poly_yarn_cost,
+        "micro_modal": micro_modal,
+        "viscose": viscose,
+        "raw_material_cost": raw_material,
+        "knittng__processing_cost": knitting_amt,
+        "wastage_after_knitting_pct": wastage_after_pct,
+        "wastage_2": wastage_after_amt,
+        "costing": costing,
+        "margin": margin_amt,
+        "margin_pct": margin_pct,
+        "selling_price": selling_price,
+        "price_per_kg_inr": price_per_kg_inr,
+        "currency_rate": currency_rate,
+        "discount_if_any": discount_amt,
+        "freight_inr_per_kg": freight_amt,
+        "commission_pct": commission_pct,
+        "commission": commission_amt,
+        "lc_days_interest": lc_days,
+        "lc_interest_amount": lc_interest_amt,
+        "total_cost_pricefreightcomlc_int_inr__kg": total_inr,
+        "total_cost_usd__kg": total_usd,
+        "price_usdkg": total_usd,
+        "linear_mtrskg": linear_mtrs,
+        "linear_ydgskg": linear_yds,
+        "price_usdmtrs": price_usd_mtrs,
+        "price_usdyds": price_usd_yds,
+        "width_cms": width,
+        "width_inch": width_inch,
+        "weight_gsm": gsm,
+    }
+
 def spec_col_to_product(col: str) -> str:
     """Convert SPECS database column name to yarn/product name used in RM Price.
     Example: 30s_kcw -> 30S KCW, 100_d -> 100 D.
@@ -436,143 +815,79 @@ def spec_col_to_product(col: str) -> str:
     out = out.replace(" D", " D")
     return out
 
-def rm_price_lookup(product: str, particular: str = "") -> float:
-    """Find RM price by product/yarn name. Particular is optional because
-    online SPECS synced columns may not have Excel row-1 group names.
+def _clean_rm_text(v: Any) -> str:
+    return " ".join(str(v or "").strip().upper().replace("-", " ").replace("_", " ").split())
+
+def rm_price_lookup_detail(product: str, particular: str = ""):
+    """Return (price, particulars, product) from merged live RM tables.
+    Exact product+particular first, then product-only, then loose normalized match.
     """
     try:
         df = load_rm()
         if df.empty:
-            return 0.0
-        prod_norm = str(product or "").strip().upper().replace("  ", " ")
-        part_norm = str(particular or "").strip().upper()
+            return None
+        prod_norm = _clean_rm_text(product)
+        part_norm = _clean_rm_text(particular)
         if not prod_norm:
-            return 0.0
+            return None
         price_col = "price_numeric" if "price_numeric" in df.columns else ("price" if "price" in df.columns else "")
-        if not price_col:
-            return 0.0
-        if "product" in df.columns:
-            pdf = df[df["product"].astype(str).str.strip().str.upper() == prod_norm]
-            if not pdf.empty:
-                if part_norm and "particulars" in pdf.columns:
-                    pdf2 = pdf[pdf["particulars"].astype(str).str.strip().str.upper() == part_norm]
-                    if not pdf2.empty:
-                        return to_float(pdf2.iloc[0].get(price_col), 0)
-                return to_float(pdf.iloc[0].get(price_col), 0)
-        return 0.0
+        if not price_col or "product" not in df.columns:
+            return None
+        x = df.copy()
+        x["_prod"] = x["product"].map(_clean_rm_text)
+        x["_part"] = x.get("particulars", pd.Series([""]*len(x))).map(_clean_rm_text)
+        m = x[x["_prod"] == prod_norm]
+        if part_norm and not m.empty:
+            m2 = m[m["_part"] == part_norm]
+            if not m2.empty:
+                rr = m2.iloc[-1]
+                return (to_float(rr.get(price_col), 0), str(rr.get("particulars", "")), str(rr.get("product", "")))
+        if not m.empty:
+            rr = m.iloc[-1]
+            return (to_float(rr.get(price_col), 0), str(rr.get("particulars", "")), str(rr.get("product", "")))
+        # loose matching: handles PKS/SPS and spacing differences
+        m = x[x["_prod"].apply(lambda p: p == prod_norm or prod_norm in p or p in prod_norm)]
+        if not m.empty:
+            rr = m.iloc[-1]
+            return (to_float(rr.get(price_col), 0), str(rr.get("particulars", "")), str(rr.get("product", "")))
+        # very loose alphanumeric match: 24S KCW == 24S_KCW, SPS == sps, PKS == pks
+        prod_alnum = ''.join(ch for ch in prod_norm if ch.isalnum())
+        if prod_alnum:
+            m = x[x["_prod"].apply(lambda p: ''.join(ch for ch in str(p).upper() if ch.isalnum()) == prod_alnum)]
+            if not m.empty:
+                rr = m.iloc[-1]
+                return (to_float(rr.get(price_col), 0), str(rr.get("particulars", "")), str(rr.get("product", "")))
+        return None
     except Exception:
-        return 0.0
+        return None
+
+def rm_price_lookup(product: str, particular: str = "") -> float:
+    """Find RM price by product/yarn name from merged Supabase RM tables."""
+    d = rm_price_lookup_detail(product, particular)
+    return to_float(d[0], 0) if d else 0.0
 
 def specs_cost_row_from_specs(spec_row: Dict[str, Any], sort_no: str) -> Dict[str, Any]:
     """Build full Cost Sheet calculation for a sort that exists only in SPECS.
-    New offline-added Sort Nos usually reach online through Supabase SPECS first.
-    This function calculates all display fields by default so the online cost sheet
-    does not show blank USD/Mtrs, USD/Yds, Linear Mtrs/Kg, Linear Yds/Kg, etc.
+    This now follows Excel Set sheet: percentage green cells as percentage,
+    amount green cells as amount, and category cost formulas via Set rows.
     """
     r = dict(spec_row or {})
     gsm = to_float(getv(r, "finish_gsm", "gsm", "weight_gsm"), 0)
     width = to_float(getv(r, "finish_width", "finish_widt", "width", "width_cms"), 0)
 
-    local_cost = to_float(getv(r, "local_cost", "price_per_kg_inr", "costing"), 0)
-    sales_price = to_float(getv(r, "sales_price", "selling_price", "price"), 0)
-    export_usd = to_float(getv(r, "price_usdkg", "total_cost_usd__kg", "export_price_fc"), 0)
-
-    skip = {
-        "sync_row_id","sr_no","dev_sorts","sort_no","sort","dev_sort","sorts","structure",
-        "finish_gsm","finish_width","finish_widt","gsm","width","width_cms","weight_gsm","width_inch",
-        "local_cost","sales_price","selling_price","price","price_per_kg_inr","costing",
-        "export_cost_inr","export_price_fc","price_usdkg","price_usdmtrs","price_usdyds",
-        "total_cost_usd__kg","total_cost_pricefreightcomlc_int_inr__kg",
-        "created_at","updated_at","data"
+    green_defaults = {
+        "wastage_pct": to_float(getv(r, "wastage_pct", "waste_pct_green"), 3.0),
+        "dyeing_cost_rs": to_float(getv(r, "dyeing_cost_rs"), 0.0),
+        "knitting_processing_cost": to_float(getv(r, "knittng__processing_cost", "knitting_processing_cost"), 90.0),
+        "wastage_after_knitting_pct": to_float(getv(r, "wastage_after_knitting_pct"), 10.0),
+        "margin_pct": to_float(getv(r, "margin_pct"), 10.0),
+        "discount_if_any": to_float(getv(r, "discount_if_any"), 0.0),
+        "currency_rate": to_float(getv(r, "currency_rate"), 87.0),
+        "freight_inr_per_kg": to_float(getv(r, "freight_inr_per_kg"), 15.0),
+        "commission_pct": to_float(getv(r, "commission_pct"), 5.0),
+        "lc_days_interest": to_float(getv(r, "lc_days_interest", "lc_days_interest_amount"), 0.0),
     }
-
-    cotton_cost = 0.0
-    polyester_cost = 0.0
-    spandex_cost = 0.0
-    kora_cost = 0.0
-    other_cost = 0.0
-
-    # Calculate raw material from SPECS percentage columns and RM Price table.
-    # If exact yarn/group matching is unavailable, the calculation still falls back
-    # to Local/Sales cost below so no output column remains blank.
-    for col, val in r.items():
-        c = norm_col(col)
-        if c in skip:
-            continue
-        pct = to_float(val, 0)
-        if abs(pct) < 0.000001 or pct > 1000:
-            continue
-        product = spec_col_to_product(c)
-        price = rm_price_lookup(product)
-        amount = price * pct / 100.0 if price else 0.0
-        name = f"{c} {product}".upper()
-        if any(x in name for x in ["LYCRA", "SPANDEX", "20 D", "30 D", "40 D", "55 D", "70 D", "105 D"]):
-            spandex_cost += amount
-        elif any(x in name for x in ["POLY", "POLYESTER", "PC", "RECYCLE", "COOLTEX", "DYED POLY"]):
-            polyester_cost += amount
-        elif any(x in name for x in ["KORA", "GREY", "GRAY"]):
-            kora_cost += amount
-        elif amount:
-            cotton_cost += amount
-        else:
-            other_cost += amount
-
-    raw_from_rm = cotton_cost + polyester_cost + spandex_cost + kora_cost + other_cost
-
-    currency = 87.0
-    freight = 15.0
-    commission_pct = 5.0
-    lc_interest = 0.0
-    waste_amt = 0.0
-    dyeing = 0.0
-    knitting = to_float(getv(r, "knittng__processing_cost", "knitting_processing_cost"), 90)
-    waste_after_pct = 10.0
-    margin_pct_default = 10.0
-
-    if raw_from_rm > 0:
-        cotton_yarn = cotton_cost if cotton_cost else raw_from_rm
-        dyed_yarn = cotton_yarn + waste_amt + dyeing
-        cotton_prop = dyed_yarn
-        raw_material = raw_from_rm
-        if not knitting:
-            # same behaviour as offline fallback: default knit/process cost when not stored
-            knitting = 90.0
-        base_cost = raw_material + knitting
-        waste_after_amt = base_cost * waste_after_pct / 100.0
-        costing = base_cost + waste_after_amt
-        price_per_kg = local_cost if local_cost else costing
-        selling = sales_price if sales_price else (price_per_kg * (1 + margin_pct_default/100.0))
-    else:
-        # If RM mapping cannot calculate raw material, use synced local/sales values
-        # and reverse-calculate missing rows so all fields show values.
-        price_per_kg = local_cost if local_cost else (sales_price if sales_price else 0)
-        selling = sales_price if sales_price else price_per_kg
-        costing = price_per_kg if price_per_kg else (selling / 1.10 if selling else 0)
-        if not knitting:
-            # Estimate knitting from offline-style cost. Use 90 where cost supports it,
-            # otherwise keep zero for very small/new incomplete rows.
-            knitting = 90.0 if costing >= 120 else 0.0
-        base_cost = costing / (1 + waste_after_pct / 100.0) if costing else 0
-        raw_material = max(base_cost - knitting, 0) if base_cost else 0
-        cotton_yarn = raw_material
-        dyed_yarn = cotton_yarn + waste_amt + dyeing
-        cotton_prop = dyed_yarn
-        waste_after_amt = base_cost * waste_after_pct / 100.0 if base_cost else 0
-        polyester_cost = polyester_cost or 0.0
-        spandex_cost = spandex_cost or 0.0
-        kora_cost = kora_cost or 0.0
-
-    margin = selling - costing if selling and costing else 0.0
-    margin_pct = (margin / costing * 100.0) if costing else margin_pct_default
-    commission = price_per_kg * commission_pct / 100.0 if price_per_kg else 0.0
-    total_inr = price_per_kg + freight + commission + lc_interest if price_per_kg else 0.0
-    total_usd = export_usd if export_usd else (total_inr / currency if currency and total_inr else 0.0)
-
-    width_inch = width / 2.54 if width else 0.0
-    linear_mtrs = 100000.0 / (gsm * width) if gsm and width else 0.0
-    linear_yds = linear_mtrs * 1.0936133 if linear_mtrs else 0.0
-    price_usd_mtrs = total_usd / linear_mtrs if total_usd and linear_mtrs else 0.0
-    price_usd_yds = total_usd / linear_yds if total_usd and linear_yds else 0.0
+    calc = calculate_set_sheet_costs(r, green_defaults)
 
     def z(v, dec=2):
         try:
@@ -580,49 +895,42 @@ def specs_cost_row_from_specs(spec_row: Dict[str, Any], sort_no: str) -> Dict[st
         except Exception:
             return 0
 
-    return {
+    out = {
         "dev_sorts": clean_sort_value(sort_no),
         "sort_no": clean_sort_value(sort_no),
+        "_source": "specs",
         "structure": getv(r, "structure"),
         "finish_gsm": z(gsm, 0),
         "finish_width": z(width, 0),
-        "width_cms": z(width, 0),
-        "width_inch": z(width_inch, 2),
-        "weight_gsm": z(gsm, 0),
-        "cotton_yarn_costing": z(cotton_yarn, 2),
-        "wastage": z(waste_amt, 2),
-        "dyeing_cost_rs": z(dyeing, 2),
-        "dyed_yarn_cost_rs": z(dyed_yarn, 2),
-        "cotton_dyed_proportion_cost": z(cotton_prop, 2),
-        "polyester_cost": z(polyester_cost, 2),
-        "spandex_cost": z(spandex_cost, 2),
-        "kora_yarn_cost": z(kora_cost, 2),
-        "raw_material_cost": z(raw_material, 2),
-        "knittng__processing_cost": z(knitting, 2),
-        "wastage_after_knitting_pct": z(waste_after_pct, 2),
-        "wastage_2": z(waste_after_amt, 2),
-        "costing": z(costing, 2),
-        "margin": z(margin, 2),
-        "margin_pct": z(margin_pct, 2),
-        "selling_price": z(selling, 2),
-        "price_per_kg_inr": z(price_per_kg, 2),
-        "currency_rate": z(currency, 2),
-        "discount_if_any": 0,
-        "freight_inr_per_kg": z(freight, 2),
-        "commission_pct": z(commission_pct, 2),
-        "commission": z(commission, 2),
-        "lc_days_interest": z(lc_interest, 2),
-        "linear_mtrskg": z(linear_mtrs, 2),
-        "linear_ydgskg": z(linear_yds, 2),
-        "total_cost_pricefreightcomlc_int_inr__kg": z(total_inr, 2),
-        "total_cost_usd__kg": z(total_usd, 2),
-        "price_usdkg": z(total_usd, 2),
-        "price_usdmtrs": z(price_usd_mtrs, 2),
-        "price_usdyds": z(price_usd_yds, 2),
     }
+    for k, v in calc.items():
+        if k in ["finish_gsm", "finish_width"]:
+            continue
+        out[k] = z(v, 2)
+    # If old uploaded/synced price fields exist and are non-zero, keep them only as a fallback.
+    for src, dest in [
+        ("sales_price", "selling_price"), ("selling_price", "selling_price"),
+        ("local_cost", "price_per_kg_inr"), ("price_per_kg_inr", "price_per_kg_inr"),
+        ("export_price_fc", "total_cost_usd__kg"), ("price_usdkg", "price_usdkg")
+    ]:
+        val = to_float(getv(r, src), 0)
+        if val and not to_float(out.get(dest), 0):
+            out[dest] = z(val, 2)
+    return out
+
 
 def get_sort_row(sort_no:str)->Dict[str,Any]:
     target=clean_sort_value(sort_no)
+    # For offline-added/bulk-upload sorts, always calculate from live SPECS first
+    # so PKS/SPS and green-cell formula logic are applied online.
+    if target in ONLINE_EXTRA_SORT_YARN_ITEMS:
+        sdf_first = load_specs()
+        if not sdf_first.empty:
+            c_first = next((x for x in ["dev_sorts","sort_no","sort"] if x in sdf_first.columns), group_sort_col(sdf_first))
+            if c_first in sdf_first.columns:
+                m_first = sdf_first[sdf_first[c_first].apply(clean_sort_value)==target]
+                if not m_first.empty:
+                    return specs_cost_row_from_specs(m_first.iloc[0].to_dict(), target)
     df=load_group()
     if not df.empty:
         c=group_sort_col(df)
@@ -757,6 +1065,11 @@ def login_page():
         st.markdown('<div class="login-note">Publisher: CSTRBM TECH PVT LTD • Made in India</div></div>', unsafe_allow_html=True)
 
 # ---------- calculation ----------
+def derive_waste_pct(row:Dict[str,Any])->float:
+    cotton=to_float(getv(row,"cotton_yarn_costing"),0)
+    waste=to_float(getv(row,"wastage"),0)
+    return round(waste/cotton*100,2) if cotton and waste else 0.0
+
 def derive_after_knitting_pct(row:Dict[str,Any])->float:
     amt=to_float(getv(row,"wastage_2"), 0)
     raw=to_float(getv(row,"raw_material_cost"), 0)
@@ -775,52 +1088,71 @@ def derive_margin_pct(row:Dict[str,Any])->float:
     return round(margin/costing*100,2) if margin and costing else 10.0
 
 def apply_whatif(row:Dict[str,Any], wf:Dict[str,float])->Dict[str,Any]:
-    # This follows the offline desktop formula from Final app_desktop.py.
+    """Apply What-If values using the same Excel Set sheet formula logic.
+    Waste %, Knit Waste %, Commission %, Margin % are percentages.
+    Dyeing Cost, Knitting + Processing, Freight, Discount, LC are amounts/days as per Excel green cells.
+    """
     r=dict(row)
-    currency=to_float(wf.get("currency_rate"), to_float(getv(r,"currency_rate"),87))
-    discount=to_float(wf.get("discount_if_any"), to_float(getv(r,"discount_if_any"),0))
-    freight=to_float(wf.get("freight_inr_per_kg"), to_float(getv(r,"freight_inr_per_kg"),0))
-    commission_pct=to_float(wf.get("commission_pct"), derive_commission_pct(r))
-    lc_int=to_float(wf.get("lc_days_interest"), to_float(getv(r,"lc_days_interest","lc_days_interest_amount","lc_days__interest_15_pm"),0))
-    wastage_amt=to_float(wf.get("wastage"), to_float(getv(r,"wastage"),0))
-    dyeing=to_float(wf.get("dyeing_cost_rs"), to_float(getv(r,"dyeing_cost_rs"),0))
-    knitting=to_float(wf.get("knittng__processing_cost"), to_float(getv(r,"knittng__processing_cost"),90))
-    waste_after_pct=to_float(wf.get("wastage_after_knitting_pct"), derive_after_knitting_pct(r))
-    margin_pct=to_float(wf.get("margin_pct"), derive_margin_pct(r))
-
-    cotton_yarn=to_float(getv(r,"cotton_yarn_costing"),0)
-    dyed_yarn=cotton_yarn+wastage_amt+dyeing
-    cotton_prop_raw=getv(r,"cotton_dyed_proportion_cost")
-    cotton_prop=to_float(cotton_prop_raw, cotton_yarn+wastage_amt)
-    raw=cotton_prop
-    for k in ['polyester_cost','spandex_cost','melange_cost','kora_yarn_cost','reactive_yarn_cost','cooltex_yarn_cost','recycle_yarn_cost','dyed_poly_yarn_cost','micro_modal','viscose']:
-        raw += to_float(getv(r,k),0)
-    base_cost=raw+knitting
-    waste_after_amt=base_cost*waste_after_pct/100.0
-    costing=base_cost+waste_after_amt
-    margin_amt=costing*margin_pct/100.0
-    selling=costing+margin_amt-discount
-    price_per_kg=selling
-    commission_amt=price_per_kg*commission_pct/100.0
-    total_inr=price_per_kg+freight+commission_amt+lc_int
-    price_usd=total_inr/currency if currency else 0
-    lm=to_float(getv(r,"linear_mtrskg"),0)
-    ly=to_float(getv(r,"linear_ydgskg"),0)
-    r.update({
-        'wastage':wastage_amt, 'dyeing_cost_rs':dyeing, 'dyed_yarn_cost_rs':dyed_yarn,
-        'cotton_dyed_proportion_cost':cotton_prop, 'raw_material_cost':raw,
-        'knittng__processing_cost':knitting, 'wastage_after_knitting_pct':waste_after_pct,
-        'wastage_2':waste_after_amt, 'costing':costing, 'margin':margin_amt, 'margin_pct':margin_pct,
-        'selling_price':selling, 'currency_rate':currency, 'discount_if_any':discount,
-        'price_per_kg_inr':price_per_kg, 'freight_inr_per_kg':freight,
-        'commission':commission_amt, 'commission_pct':commission_pct, 'lc_days_interest':lc_int,
-        'total_cost_pricefreightcomlc_int_inr__kg':total_inr,
-        'total_cost_usd__kg':price_usd, 'price_usdkg':price_usd,
-        'price_usdmtrs':price_usd/lm if lm else to_float(getv(r,'price_usdmtrs'),0),
-        'price_usdyds':price_usd/ly if ly else to_float(getv(r,'price_usdyds'),0),
-    })
+    green = {
+        "wastage_pct": to_float(wf.get("wastage"), to_float(getv(r,"wastage_pct_green"), derive_waste_pct(r))),
+        "dyeing_cost_rs": to_float(wf.get("dyeing_cost_rs"), to_float(getv(r,"dyeing_cost_rs"),0)),
+        "knitting_processing_cost": to_float(wf.get("knittng__processing_cost"), to_float(getv(r,"knittng__processing_cost"),90)),
+        "wastage_after_knitting_pct": to_float(wf.get("wastage_after_knitting_pct"), derive_after_knitting_pct(r)),
+        "discount_if_any": to_float(wf.get("discount_if_any"), to_float(getv(r,"discount_if_any"),0)),
+        "currency_rate": to_float(wf.get("currency_rate"), to_float(getv(r,"currency_rate"),87)),
+        "freight_inr_per_kg": to_float(wf.get("freight_inr_per_kg"), to_float(getv(r,"freight_inr_per_kg"),0)),
+        "commission_pct": to_float(wf.get("commission_pct"), derive_commission_pct(r)),
+        "lc_days_interest": to_float(wf.get("lc_days_interest"), to_float(getv(r,"lc_days_interest","lc_days_interest_amount","lc_days__interest_15_pm"),0)),
+        "margin_pct": to_float(wf.get("margin_pct"), derive_margin_pct(r)),
+    }
+    # For SPECS-origin rows, recalculate directly from Set-sheet mapping.
+    if str(getv(r, "_source", default="")).lower() == "specs" or ("sync_row_id" in r and not to_float(getv(r,"raw_material_cost"),0)):
+        calc = calculate_set_sheet_costs(r, green)
+    else:
+        # Existing group_costing rows already store calculated yarn-category values.
+        # Recalculate green-cell dependent rows from stored category values.
+        cotton_yarn=to_float(getv(r,"cotton_yarn_costing"),0)
+        waste_amt=cotton_yarn*green["wastage_pct"]/100.0
+        dyeing=green["dyeing_cost_rs"]
+        dyed_yarn=cotton_yarn+waste_amt+dyeing
+        cotton_pct = 0.0
+        old_prop=to_float(getv(r,"cotton_dyed_proportion_cost"),0)
+        old_dyed=to_float(getv(r,"dyed_yarn_cost_rs"),0)
+        if old_prop and old_dyed:
+            cotton_pct = old_prop/old_dyed*100.0
+        else:
+            cotton_pct = 100.0
+        cotton_prop=dyed_yarn*cotton_pct/100.0
+        raw=cotton_prop
+        for k in ['polyester_cost','spandex_cost','melange_cost','kora_yarn_cost','reactive_yarn_cost','cooltex_yarn_cost','recycle_yarn_cost','dyed_poly_yarn_cost','micro_modal','viscose']:
+            raw += to_float(getv(r,k),0)
+        base_cost=raw+green["knitting_processing_cost"]
+        waste_after_amt=base_cost*green["wastage_after_knitting_pct"]/100.0
+        costing=base_cost+waste_after_amt
+        margin_amt=costing*green["margin_pct"]/100.0
+        selling=costing+margin_amt
+        price_per_kg=selling
+        commission_amt=price_per_kg*green["commission_pct"]/100.0
+        lc_interest_pct=(18.0/365.0)*green["lc_days_interest"]
+        lc_interest_amt=price_per_kg*lc_interest_pct/100.0
+        total_inr=(price_per_kg-green["discount_if_any"])+green["freight_inr_per_kg"]+commission_amt+lc_interest_amt
+        price_usd=total_inr/green["currency_rate"] if green["currency_rate"] else 0
+        lm=to_float(getv(r,"linear_mtrskg"),0)
+        ly=to_float(getv(r,"linear_ydgskg"),0)
+        calc={
+            'wastage':waste_amt, 'wastage_pct_green':green["wastage_pct"], 'dyeing_cost_rs':dyeing, 'dyed_yarn_cost_rs':dyed_yarn,
+            'cotton_dyed_proportion_cost':cotton_prop, 'raw_material_cost':raw,
+            'knittng__processing_cost':green["knitting_processing_cost"], 'wastage_after_knitting_pct':green["wastage_after_knitting_pct"],
+            'wastage_2':waste_after_amt, 'costing':costing, 'margin':margin_amt, 'margin_pct':green["margin_pct"],
+            'selling_price':selling, 'price_per_kg_inr':price_per_kg, 'currency_rate':green["currency_rate"], 'discount_if_any':green["discount_if_any"],
+            'freight_inr_per_kg':green["freight_inr_per_kg"], 'commission':commission_amt, 'commission_pct':green["commission_pct"],
+            'lc_days_interest':green["lc_days_interest"], 'lc_interest_amount':lc_interest_amt,
+            'total_cost_pricefreightcomlc_int_inr__kg':total_inr, 'total_cost_usd__kg':price_usd, 'price_usdkg':price_usd,
+            'price_usdmtrs':price_usd/lm if lm else to_float(getv(r,'price_usdmtrs'),0),
+            'price_usdyds':price_usd/ly if ly else to_float(getv(r,'price_usdyds'),0),
+        }
+    r.update(calc)
     return r
-
 
 
 def calc_local_cost(row:Dict[str,Any])->float:
@@ -913,6 +1245,86 @@ def html_table(title:str, rows:List[tuple], header_extra:str="")->str:
     extra_html = f'<div class="tbl-kpis">{header_extra}</div>' if header_extra else ''
     return f'<div class="tblbox"><div class="tbltitle"><span class="tbltitle-main">▣ {html.escape(title)}</span>{extra_html}</div><table class="rbmtable">{"".join(trs)}</table></div>'
 
+
+
+def composition_rows_from_specs(spec_row: Dict[str, Any], sort_no: str) -> List[tuple]:
+    """Online Yarn / Composition Summary same as offline.
+    Shows PKS/SPS and other new yarns with live RM Price and Calc Value.
+    """
+    rows=[]
+    seen=set()
+    for particular, yarn, pct, default_price in extra_sort_yarn_items_for_specs(spec_row):
+        live = rm_price_lookup(yarn, particular)
+        price = live if live else to_float(default_price, 0)
+        calc = price * to_float(pct, 0) / 100.0 if price else 0
+        rows.append((particular, yarn, price, pct, calc, "online-extra"))
+        seen.add((_clean_rm_text(particular), _clean_rm_text(yarn)))
+
+    skip = {
+        "sync_row_id","sr_no","dev_sorts","sort_no","sort","dev_sort","sorts","structure",
+        "finish_gsm","finish_width","finish_widt","gsm","width","width_cms","weight_gsm","width_inch",
+        "local_cost","sales_price","selling_price","price","price_per_kg_inr","costing",
+        "export_cost_inr","export_price_fc","price_usdkg","price_usdmtrs","price_usdyds",
+        "total_cost_usd__kg","total_cost_pricefreightcomlc_int_inr__kg",
+        "created_at","updated_at","data","cotton","poly","tencel","spandex"
+    }
+    for col, val in (spec_row or {}).items():
+        c = norm_col(col)
+        if c in skip:
+            continue
+        pct = to_float(val, 0)
+        if pct <= 0 or pct > 1000:
+            continue
+        yarn = spec_col_to_product(col)
+        detail = rm_price_lookup_detail(yarn)
+        if not detail:
+            continue
+        price, particular, rm_product = detail
+        if not particular:
+            particular = "% OF INDIGO"
+        sig=(_clean_rm_text(particular), _clean_rm_text(rm_product or yarn))
+        if sig in seen:
+            continue
+        calc = price * pct / 100.0
+        rows.append((particular, rm_product or yarn, price, pct, calc, col))
+        seen.add(sig)
+
+    if not rows:
+        for particular, yarn, default_price, set_idx in SET_YARN_ROWS:
+            pct = get_spec_pct_by_set_index(spec_row, set_idx, particular, yarn)
+            if pct <= 0:
+                continue
+            price = rm_price_lookup(yarn, particular) or float(default_price or 0)
+            calc = price * pct / 100.0 if price else 0
+            rows.append((particular, yarn, price, pct, calc, set_idx))
+
+    cotton_pct = sum(to_float(r[3],0) for r in rows if _is_cotton_like_particular(r[0], r[1]))
+    spandex_pct = sum(to_float(r[3],0) for r in rows if any(x in (str(r[0])+str(r[1])).upper() for x in ["LYCRA","SPANDEX","ELAST"]))
+    if cotton_pct:
+        rows.append(("% TOTAL COMPOSITION", "Cotton", "", cotton_pct, "", ""))
+    if spandex_pct:
+        rows.append(("% TOTAL COMPOSITION", "Spandex", "", spandex_pct, "", ""))
+    return rows
+
+def html_composition_table(rows: List[tuple]) -> str:
+    if not rows:
+        return ""
+    trs=[]
+    for particular, yarn, price, pct, calc, spec_col in rows:
+        ptxt=str(particular)
+        bg = "#d7df00" if "TOTAL COMPOSITION" in ptxt.upper() else ("#cf79a8" if "LYCRA" in ptxt.upper() else ("#d8d8d8" if "KORA" in ptxt.upper() or "GREY" in ptxt.upper() else "#c8d6ef"))
+        vals=[ptxt, yarn, fmt(price), fmt(pct), fmt(calc), spec_col]
+        tds="".join([f'<td style="border:1px solid #333;padding:3px 6px;background:{bg};font-weight:700;">{html.escape(str(v))}</td>' for v in vals])
+        trs.append(f"<tr>{tds}</tr>")
+    trs_html = "".join(trs)
+    return f"""<div style='border:1px solid #333;margin-top:8px;background:white;'>
+      <div style='font-weight:900;color:#083b5f;padding:3px 6px;'>Yarn / Composition Summary</div>
+      <table style='width:100%;border-collapse:collapse;font-size:12px;'>
+        <tr style='background:#163b73;color:white;font-weight:900;'><th>Particular</th><th>Yarn</th><th>Yarn Price</th><th>%</th><th>Calc Value</th><th>Specs Column</th></tr>
+        {trs_html}
+      </table>
+    </div>"""
+
 # ---------- pages ----------
 def cost_sheet_page():
     header("Costing")
@@ -954,7 +1366,7 @@ def cost_sheet_page():
     st.markdown('<div class="whatif-title">What-If Analysis</div>', unsafe_allow_html=True)
     cols=st.columns(9, gap="small")
     defaults={
-        'wastage':to_float(getv(row,'wastage'),0),
+        'wastage':to_float(getv(row,'wastage_pct_green'), derive_waste_pct(row)),
         'dyeing_cost_rs':to_float(getv(row,'dyeing_cost_rs'),0),
         'knittng__processing_cost':to_float(getv(row,'knittng__processing_cost'),90),
         'wastage_after_knitting_pct':derive_after_knitting_pct(row),
@@ -1000,7 +1412,9 @@ def cost_sheet_page():
     cost_rows=[
         ("Cotton Yarn Costing",getv(row,'cotton_yarn_costing')),("Wastage %",getv(row,'wastage')),("Dyeing Cost Rs.",getv(row,'dyeing_cost_rs')),
         ("Dyed Yarn Cost Rs.",getv(row,'dyed_yarn_cost_rs')),("Cotton Dyed Proportion Cost",getv(row,'cotton_dyed_proportion_cost')),
-        ("Polyester Cost",getv(row,'polyester_cost')),("Spandex Cost",getv(row,'spandex_cost')),("Kora Yarn Cost",getv(row,'kora_yarn_cost')),
+        ("Polyester Cost",getv(row,'polyester_cost')),("Spandex Cost",getv(row,'spandex_cost')),("Melange Cost",getv(row,'melange_cost')),
+        ("Kora Yarn Cost",getv(row,'kora_yarn_cost')),("Reactive Yarn Cost",getv(row,'reactive_yarn_cost')),("Cooltex Yarn Cost",getv(row,'cooltex_yarn_cost')),
+        ("Recycle Yarn Cost",getv(row,'recycle_yarn_cost')),("Dyed Poly Yarn Cost",getv(row,'dyed_poly_yarn_cost')),("Micro Modal",getv(row,'micro_modal')),("Viscose",getv(row,'viscose')),
         ("Raw Material Cost",getv(row,'raw_material_cost')),("Knitting + Processing Cost",getv(row,'knittng__processing_cost')),
         ("Wastage % After Knitting",getv(row,'wastage_after_knitting_pct', default=derive_after_knitting_pct(row))),
         ("Wastage After Knitting Cost",getv(row,'wastage_2')),("Costing",getv(row,'costing')),("Margin",getv(row,'margin')),("Selling Price",getv(row,'selling_price')),
@@ -1033,6 +1447,10 @@ def cost_sheet_page():
         f'<div class="tbl-kpi k5"><b>USD/KG</b>{html.escape(fmt(getv(row,"total_cost_usd__kg","price_usdkg")))}</div>'
     )
     st.markdown(f'<div class="table-grid">{html_table("Cost Build-up",cost_rows,cost_header_kpis)}{html_table("Export / Price Calculation",export_rows,export_header_kpis)}</div>', unsafe_allow_html=True)
+    try:
+        st.markdown(html_composition_table(composition_rows_from_specs(base, sort)), unsafe_allow_html=True)
+    except Exception:
+        pass
     st.markdown('<div class="footer"><span>Publisher: <b>RBM Textile Solutions</b></span><span>Offline Textile Costing • Actual Excel Data • Print Preview • Backup</span><span>Made in India 🇮🇳</span></div><div class="content-pad"></div>', unsafe_allow_html=True)
 
 def simple_cost_page(kind:str):
