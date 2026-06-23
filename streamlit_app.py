@@ -5,6 +5,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import Any, Dict, List
 from io import BytesIO
+import os, json, urllib.request, urllib.parse, urllib.error
 
 import pandas as pd
 import streamlit as st
@@ -16,7 +17,18 @@ DATA_DIR = BASE_DIR / "data"
 GROUP_CSV = DATA_DIR / "group_costing.csv"
 RM_CSV = DATA_DIR / "rm_price_master.csv"
 USERS_CSV = DATA_DIR / "users_default.csv"
-APP_VERSION = "2026-06-23-login-first-allowed-module-v3"
+APP_VERSION = "2026-06-23-online-supabase-live-sync-v4"
+
+# Online app now reads live synced data from Supabase first.
+# Keep these in Streamlit Cloud secrets or environment variables.
+# If not found, app automatically falls back to GitHub CSV files.
+ONLINE_SUPABASE_URL = str(st.secrets.get("RBM_SUPABASE_URL", os.environ.get("RBM_SUPABASE_URL", "https://mmzvwlitakluttlnnioh.supabase.co"))).strip().rstrip("/")
+ONLINE_SUPABASE_KEY = str(st.secrets.get("RBM_SUPABASE_KEY", os.environ.get("RBM_SUPABASE_KEY", ""))).strip()
+if not ONLINE_SUPABASE_KEY:
+    try:
+        ONLINE_SUPABASE_KEY = str(st.secrets.get("SUPABASE_KEY", "")).strip()
+    except Exception:
+        ONLINE_SUPABASE_KEY = ""
 
 MODULES = ["Cost Sheet", "Cost - Local", "Cost - Export", "Add Sort", "RM Price", "Users"]
 PERM = {
@@ -47,6 +59,7 @@ a.navbtn.active{background:#166fe5;color:white;border-color:#166fe5;}
 .top-actions{display:flex;gap:5px;align-items:center;white-space:nowrap;}
 .sync,.on,.logout{border-radius:4px;padding:7px 9px;color:#fff;font-weight:900;font-size:11px}.sync{background:#0ab052}.on{background:#087e20}.logout{background:#d81919;text-decoration:none}
 .userbox{text-align:right;font-size:11px;font-weight:900;min-width:145px;}
+.db-title{color:white;font-size:14px;font-weight:900;white-space:nowrap;margin-left:6px;}
 .login-hero{max-width:520px;margin:42px auto 0 auto;background:linear-gradient(135deg,#073e61,#0b5a80);border-radius:16px 16px 0 0;padding:22px 28px 18px 28px;color:#fff;text-align:center;box-shadow:0 10px 28px rgba(0,0,0,.20)}
 .login-hero .login-title{font-size:28px;font-weight:950;letter-spacing:.2px;margin-bottom:7px}.login-hero .login-sub{font-size:14px;font-weight:850;color:#d9f7ff}.login-badge{display:inline-block;margin-top:10px;background:#108d76;color:#fff;border-radius:30px;padding:6px 18px;font-size:12px;font-weight:900}
 .login-wrap{max-width:520px;margin:0 auto 0 auto;border:1px solid #a8c7dc;border-top:0;border-radius:0 0 16px 16px;padding:24px 28px 26px 28px;background:#ffffff;box-shadow:0 12px 30px rgba(0,0,0,.16)}
@@ -76,6 +89,36 @@ a.navbtn.active{background:#166fe5;color:white;border-color:#166fe5;}
 </style>
 """, unsafe_allow_html=True)
 
+# ---------- Supabase live data helpers ----------
+def supabase_enabled() -> bool:
+    return bool(ONLINE_SUPABASE_URL and ONLINE_SUPABASE_KEY)
+
+def _sb_headers() -> Dict[str, str]:
+    return {
+        "apikey": ONLINE_SUPABASE_KEY,
+        "Authorization": f"Bearer {ONLINE_SUPABASE_KEY}",
+        "Content-Type": "application/json",
+    }
+
+@st.cache_data(show_spinner=False, ttl=20)
+def supabase_table_df(table: str, limit: int = 50000) -> pd.DataFrame:
+    """Read live synced Supabase table. If it fails, return empty and CSV fallback will work."""
+    if not supabase_enabled():
+        return pd.DataFrame()
+    try:
+        url = f"{ONLINE_SUPABASE_URL}/rest/v1/{urllib.parse.quote(table)}?select=*&limit={int(limit)}"
+        req = urllib.request.Request(url, headers=_sb_headers(), method="GET")
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            raw = resp.read().decode("utf-8", errors="ignore")
+        data = json.loads(raw) if raw.strip() else []
+        if not data:
+            return pd.DataFrame()
+        df = pd.DataFrame(data).fillna("")
+        df.columns = [norm_col(c) for c in df.columns]
+        return df
+    except Exception:
+        return pd.DataFrame()
+
 # ---------- data helpers ----------
 def norm_col(c:str)->str:
     return str(c).strip().lower().replace("/", "_").replace(" ", "_").replace(".", "").replace("%", "pct").replace("-", "_").replace("__", "_")
@@ -98,14 +141,29 @@ def read_csv(path_str: str) -> pd.DataFrame:
     return pd.DataFrame()
 
 def load_group() -> pd.DataFrame:
+    # Live data priority: Supabase sync table, then GitHub CSV fallback.
+    df_live = supabase_table_df("group_costing")
+    if not df_live.empty:
+        return df_live.copy()
     if "group_df" not in st.session_state:
         st.session_state.group_df = read_csv(str(GROUP_CSV))
     return st.session_state.group_df.copy()
+
+def load_specs() -> pd.DataFrame:
+    # SPECS is important because newly added sort numbers may exist here before group_costing.
+    df_live = supabase_table_df("specs")
+    if not df_live.empty:
+        return df_live.copy()
+    p = DATA_DIR / "specs.csv"
+    return read_csv(str(p))
 
 def save_group(df: pd.DataFrame):
     st.session_state.group_df = df.copy()
 
 def load_rm() -> pd.DataFrame:
+    df_live = supabase_table_df("rm_current")
+    if not df_live.empty:
+        return df_live.copy()
     if "rm_df" not in st.session_state:
         st.session_state.rm_df = read_csv(str(RM_CSV))
     return st.session_state.rm_df.copy()
@@ -114,6 +172,24 @@ def save_rm(df: pd.DataFrame):
     st.session_state.rm_df = df.copy()
 
 def load_users() -> pd.DataFrame:
+    # Live synced users from offline app. Falls back to GitHub users_default.csv.
+    df_live = supabase_table_df("app_users")
+    if not df_live.empty:
+        # Offline app_users may also contain permission columns. If not, merge role_permissions.
+        for c in ["can_cost_sheet","can_cost_local","can_cost_export","can_add_sort","can_rm_price","can_users"]:
+            if c not in df_live.columns:
+                df_live[c] = "False"
+        if "is_active" in df_live.columns:
+            df_live = df_live[df_live["is_active"].astype(str).str.lower().isin(["1","true","yes",""])]
+        rp = supabase_table_df("role_permissions")
+        if not rp.empty and {"username","module","can_access"}.issubset(set(rp.columns)):
+            for idx, r in df_live.iterrows():
+                uname = str(r.get("username","")).lower()
+                uperms = rp[(rp["username"].astype(str).str.lower()==uname) & (rp["can_access"].astype(str).str.lower().isin(["1","true","yes"]))]
+                for mod, key in PERM.items():
+                    if mod in uperms["module"].astype(str).tolist():
+                        df_live.loc[idx, key] = "True"
+        return df_live.copy()
     if "users_df" not in st.session_state:
         df=read_csv(str(USERS_CSV))
         if df.empty:
@@ -157,13 +233,17 @@ def group_sort_col(df:pd.DataFrame)->str:
     return df.columns[1] if len(df.columns)>1 else "dev_sorts"
 
 def sort_options()->List[str]:
-    df=load_group()
-    if df.empty: return []
-    c=group_sort_col(df)
+    # Combine Sort No from group_costing and specs so newly synced SPECS sorts appear online.
     vals=[]
-    for v in df[c].astype(str).tolist():
-        v=v.strip()
-        if v and v not in vals: vals.append(v)
+    for df in [load_group(), load_specs()]:
+        if df.empty:
+            continue
+        possible=["dev_sorts","sort_no","sort"]
+        c=next((x for x in possible if x in df.columns), group_sort_col(df))
+        for v in df[c].astype(str).tolist():
+            v=v.strip()
+            if v and v not in vals:
+                vals.append(v)
     try:
         return sorted(vals, key=lambda x:(not x.isdigit(), int(x) if x.isdigit() else x))
     except Exception:
@@ -183,11 +263,33 @@ def freight_master_rows() -> List[tuple]:
 
 def get_sort_row(sort_no:str)->Dict[str,Any]:
     df=load_group()
-    if df.empty: return {}
-    c=group_sort_col(df)
-    m=df[df[c].astype(str).str.strip()==str(sort_no).strip()]
-    if m.empty: return {}
-    return m.iloc[0].to_dict()
+    if not df.empty:
+        c=group_sort_col(df)
+        m=df[df[c].astype(str).str.strip()==str(sort_no).strip()]
+        if not m.empty:
+            return m.iloc[0].to_dict()
+    # Fallback: if the sort exists only in SPECS, still show it in online dropdown/pages.
+    sdf=load_specs()
+    if not sdf.empty:
+        c=next((x for x in ["dev_sorts","sort_no","sort"] if x in sdf.columns), group_sort_col(sdf))
+        m=sdf[sdf[c].astype(str).str.strip()==str(sort_no).strip()]
+        if not m.empty:
+            r=m.iloc[0].to_dict()
+            return {
+                "dev_sorts": str(sort_no),
+                "sort_no": str(sort_no),
+                "structure": getv(r,"structure","STRUCTURE"),
+                "finish_gsm": getv(r,"finish_gsm","FINISH GSM"),
+                "finish_width": getv(r,"finish_width","FINISH WIDTH"),
+                "selling_price": getv(r,"selling_price","sales_price","local_cost"),
+                "price_per_kg_inr": getv(r,"price_per_kg_inr","local_cost","sales_price"),
+                "currency_rate": 87,
+                "discount_if_any": 0,
+                "freight_inr_per_kg": 15,
+                "commission_pct": 5,
+                "lc_days_interest": 0,
+            }
+    return {}
 
 # ---------- role/session ----------
 def init_state():
@@ -221,13 +323,11 @@ def has_perm(module:str)->bool:
     key=PERM.get(module, "")
     return str(r.get(key,"False")).lower() in ("true","1","yes")
 
-
-def first_allowed_module()->str:
-    """Return first module allowed for current user.
-    If user has only Cost - Export or only Cost - Local, login opens that module.
-    """
-    visible = [m for m in MODULES if has_perm(m)]
-    return visible[0] if visible else "Cost Sheet"
+def first_allowed_module() -> str:
+    for m in MODULES:
+        if has_perm(m):
+            return m
+    return "Cost Sheet"
 
 # ---------- UI ----------
 def set_module(m:str):
