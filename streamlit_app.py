@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+from urllib.parse import quote
 from pathlib import Path
 from datetime import datetime
 from typing import Any, Dict, List
@@ -40,58 +41,39 @@ st.markdown("""
 .top-actions{margin-left:auto;display:flex;gap:6px;align-items:center;white-space:nowrap;}
 .sync,.on{border-radius:4px;padding:7px 9px;color:#fff;font-weight:900;font-size:10px}.sync{background:#0ab052}.on{background:#087e20}
 .userbox{text-align:right;font-size:11px;font-weight:900;min-width:165px;}
-/* Real Streamlit buttons moved into top dark-blue header. No anchor URL, no logout issue. */
-/* TOP MODULE BUTTONS - AUTO-FIT / COMPACT
-   Buttons stay in the dark-blue header, do not take equal big column width. */
-div:has(> .rbm-nav-anchor) + div[data-testid="stHorizontalBlock"]{
-  margin-top:-54px!important;
-  margin-left:155px!important;
-  width:calc(100% - 470px)!important;
-  max-width:880px!important;
-  position:relative!important;
-  z-index:50!important;
-  display:flex!important;
-  flex-wrap:nowrap!important;
-  gap:10px!important;
-  align-items:center!important;
-  padding:0!important;
-  overflow:hidden!important;
+/* TOP MODULE BUTTONS - EXACT DARK-BLUE HEADER POSITION (HTML links, auto-fit) */
+.nav-inline{
+  margin-left:10px;
+  display:flex;
+  gap:10px;
+  align-items:center;
+  flex:0 1 auto;
+  overflow:hidden;
+  white-space:nowrap;
 }
-div:has(> .rbm-nav-anchor) + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]{
-  flex:0 0 auto!important;
-  width:auto!important;
-  min-width:0!important;
-  padding:0!important;
+.nav-inline a{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  height:28px;
+  min-width:118px;
+  padding:0 12px;
+  border-radius:2px;
+  background:#ffffff;
+  border:1px solid #d6d6d6;
+  color:#102030!important;
+  text-decoration:none!important;
+  font-size:11px;
+  font-weight:900;
+  line-height:1;
+  box-sizing:border-box;
 }
-div:has(> .rbm-nav-anchor) + div[data-testid="stHorizontalBlock"] .stButton{
-  width:auto!important;
-}
-div:has(> .rbm-nav-anchor) + div[data-testid="stHorizontalBlock"] .stButton button{
-  width:auto!important;
-  min-width:118px!important;
-  max-width:150px!important;
-  height:28px!important;
-  min-height:28px!important;
-  padding:0 14px!important;
-  margin:0!important;
-  border-radius:2px!important;
-  font-size:11px!important;
-  font-weight:900!important;
-  white-space:nowrap!important;
-  box-shadow:none!important;
-  line-height:1!important;
-}
-div:has(> .rbm-nav-anchor) + div[data-testid="stHorizontalBlock"] .stButton button[kind="primary"]{
+.nav-inline a.active{
   background:#ff4d4d!important;
   border-color:#ff4d4d!important;
-  color:#fff!important;
+  color:#ffffff!important;
 }
-div:has(> .rbm-nav-anchor) + div[data-testid="stHorizontalBlock"] .stButton button[kind="secondary"]{
-  background:#ffffff!important;
-  border-color:#d6d6d6!important;
-  color:#102030!important;
-}
-div:has(> .rbm-nav-anchor) + div[data-testid="stHorizontalBlock"] + div{margin-top:-5px!important;}
+.nav-spacer{flex:1 1 auto; min-width:8px;}
 .login-wrap{max-width:470px;margin:34px auto 0 auto;border:1px solid #b8cfe2;border-radius:8px;padding:18px 22px;background:#f8fcff;box-shadow:0 4px 14px rgba(0,0,0,.12)}
 .login-title{text-align:center;color:#0b4f73;font-size:24px;font-weight:900;margin-bottom:6px}.login-sub{text-align:center;color:#234;font-size:13px;font-weight:700;margin-bottom:10px}
 .control-strip{background:#dedbd5;padding:4px 8px;display:flex;align-items:center;gap:6px;white-space:nowrap;}
@@ -227,6 +209,22 @@ if st.session_state.get("_app_version") != APP_VERSION:
     st.session_state["_app_version"] = APP_VERSION
 
 
+
+# Handle top navigation query parameters without clearing login session.
+def handle_nav_query_params():
+    try:
+        qp = st.query_params
+        if st.session_state.logged_in and qp.get("rbm_logout"):
+            do_logout()
+            st.query_params.clear()
+            st.rerun()
+        m = qp.get("rbm_module")
+        if st.session_state.logged_in and m in MODULES and has_perm(m):
+            st.session_state.module = m
+            st.query_params.clear()
+    except Exception:
+        pass
+
 def current_user_row()->Dict[str,Any]:
     df=load_users()
     m=df[df["username"].astype(str).str.lower()==str(st.session_state.username).lower()]
@@ -255,30 +253,21 @@ def do_logout():
 
 def header(title="Costing"):
     role=html.escape(str(st.session_state.role or "")); user=html.escape(str(st.session_state.username or ""))
+    visible=[m for m in MODULES if has_perm(m)]
+    nav_html = ""
+    for m in visible:
+        active = " active" if st.session_state.get("module") == m else ""
+        nav_html += f'<a class="{active.strip()}" href="?rbm_module={quote(m)}">{html.escape(m)}</a>'
+    nav_html += '<a href="?rbm_logout=1">Logout</a>'
     st.markdown(f"""
 <div class="rbm-top">
   <div class="logo"><div class="big">RBM AI</div><div class="sub">Robotic Business Management</div></div>
-  <div class="titlebox">{html.escape(title)}</div>
-  <div style="flex:1"></div>
+  <div class="nav-inline">{nav_html}</div>
+  <div class="nav-spacer"></div>
   <div class="top-actions"><span class="sync">☁ Sync Now</span><span class="on">⦿ ON</span></div>
   <div class="userbox">User: {user} | Role: {role}</div>
 </div>
 """, unsafe_allow_html=True)
-    visible=[m for m in MODULES if has_perm(m)]
-    # Real Streamlit buttons (not URL links) are used for navigation, so clicking any
-    # module will not reset login. CSS moves this row into the dark-blue header.
-    if visible:
-        st.markdown('<span class="rbm-nav-anchor"></span>', unsafe_allow_html=True)
-        labels = visible + ["Logout"]
-        # Auto-fit buttons: use_container_width=False + CSS makes every button only as wide as needed.
-        cols = st.columns(len(labels), gap="small")
-        for i, m in enumerate(visible):
-            btn_type = "primary" if st.session_state.get("module") == m else "secondary"
-            if cols[i].button(m, key=f"nav_btn_{m}", type=btn_type, use_container_width=False):
-                st.session_state.module = m
-                st.rerun()
-        if cols[-1].button("Logout", key="nav_logout_btn", use_container_width=False):
-            do_logout(); st.rerun()
 
 def login_page():
     st.markdown("""
@@ -565,6 +554,7 @@ if not st.session_state.logged_in:
     login_page()
     st.stop()
 
+handle_nav_query_params()
 module=st.session_state.get("module","Cost Sheet")
 if not has_perm(module):
     module="Cost Sheet"
