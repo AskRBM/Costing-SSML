@@ -17,7 +17,7 @@ DATA_DIR = BASE_DIR / "data"
 GROUP_CSV = DATA_DIR / "group_costing.csv"
 RM_CSV = DATA_DIR / "rm_price_master.csv"
 USERS_CSV = DATA_DIR / "users_default.csv"
-APP_VERSION = "2026-06-23-online-specs-calculation-v11"
+APP_VERSION = "2026-06-23-online-specs-full-calculation-v12"
 
 # Online app now reads live synced data from Supabase first.
 # IMPORTANT: Put these same values in Streamlit Cloud Secrets also.
@@ -452,25 +452,37 @@ def rm_price_lookup(product: str, particular: str = "") -> float:
         return 0.0
 
 def specs_cost_row_from_specs(spec_row: Dict[str, Any], sort_no: str) -> Dict[str, Any]:
-    """Build Cost Sheet calculation for a sort that exists only in SPECS.
-    This prevents new synced sorts (1202/1203 etc.) from showing blank calculation.
-    Priority: use local_cost/sales_price from SPECS when available, otherwise calculate from RM price.
+    """Build full Cost Sheet calculation for a sort that exists only in SPECS.
+    New offline-added Sort Nos usually reach online through Supabase SPECS first.
+    This function calculates all display fields by default so the online cost sheet
+    does not show blank USD/Mtrs, USD/Yds, Linear Mtrs/Kg, Linear Yds/Kg, etc.
     """
     r = dict(spec_row or {})
-    gsm = to_float(getv(r, "finish_gsm", "gsm"), 0)
-    width = to_float(getv(r, "finish_width", "finish_widt", "width"), 0)
+    gsm = to_float(getv(r, "finish_gsm", "gsm", "weight_gsm"), 0)
+    width = to_float(getv(r, "finish_width", "finish_widt", "width", "width_cms"), 0)
+
     local_cost = to_float(getv(r, "local_cost", "price_per_kg_inr", "costing"), 0)
     sales_price = to_float(getv(r, "sales_price", "selling_price", "price"), 0)
     export_usd = to_float(getv(r, "price_usdkg", "total_cost_usd__kg", "export_price_fc"), 0)
 
     skip = {
         "sync_row_id","sr_no","dev_sorts","sort_no","sort","dev_sort","sorts","structure",
-        "finish_gsm","finish_width","finish_widt","gsm","width","local_cost","sales_price",
-        "selling_price","price","price_per_kg_inr","costing","export_cost_inr","export_price_fc",
-        "price_usdkg","price_usdmtrs","price_usdyds","total_cost_usd__kg","total_cost_pricefreightcomlc_int_inr__kg",
+        "finish_gsm","finish_width","finish_widt","gsm","width","width_cms","weight_gsm","width_inch",
+        "local_cost","sales_price","selling_price","price","price_per_kg_inr","costing",
+        "export_cost_inr","export_price_fc","price_usdkg","price_usdmtrs","price_usdyds",
+        "total_cost_usd__kg","total_cost_pricefreightcomlc_int_inr__kg",
         "created_at","updated_at","data"
     }
-    raw_from_rm = 0.0
+
+    cotton_cost = 0.0
+    polyester_cost = 0.0
+    spandex_cost = 0.0
+    kora_cost = 0.0
+    other_cost = 0.0
+
+    # Calculate raw material from SPECS percentage columns and RM Price table.
+    # If exact yarn/group matching is unavailable, the calculation still falls back
+    # to Local/Sales cost below so no output column remains blank.
     for col, val in r.items():
         c = norm_col(col)
         if c in skip:
@@ -480,73 +492,121 @@ def specs_cost_row_from_specs(spec_row: Dict[str, Any], sort_no: str) -> Dict[st
             continue
         product = spec_col_to_product(c)
         price = rm_price_lookup(product)
-        if price:
-            raw_from_rm += price * pct / 100.0
+        amount = price * pct / 100.0 if price else 0.0
+        name = f"{c} {product}".upper()
+        if any(x in name for x in ["LYCRA", "SPANDEX", "20 D", "30 D", "40 D", "55 D", "70 D", "105 D"]):
+            spandex_cost += amount
+        elif any(x in name for x in ["POLY", "POLYESTER", "PC", "RECYCLE", "COOLTEX", "DYED POLY"]):
+            polyester_cost += amount
+        elif any(x in name for x in ["KORA", "GREY", "GRAY"]):
+            kora_cost += amount
+        elif amount:
+            cotton_cost += amount
+        else:
+            other_cost += amount
 
-    knitting = 90.0
+    raw_from_rm = cotton_cost + polyester_cost + spandex_cost + kora_cost + other_cost
+
+    currency = 87.0
+    freight = 15.0
+    commission_pct = 5.0
+    lc_interest = 0.0
+    waste_amt = 0.0
+    dyeing = 0.0
+    knitting = to_float(getv(r, "knittng__processing_cost", "knitting_processing_cost"), 0)
     waste_after_pct = 10.0
+    margin_pct_default = 10.0
 
     if raw_from_rm > 0:
+        cotton_yarn = cotton_cost if cotton_cost else raw_from_rm
+        dyed_yarn = cotton_yarn + waste_amt + dyeing
+        cotton_prop = dyed_yarn
         raw_material = raw_from_rm
+        if not knitting:
+            # same behaviour as offline fallback: default knit/process cost when not stored
+            knitting = 90.0
         base_cost = raw_material + knitting
         waste_after_amt = base_cost * waste_after_pct / 100.0
         costing = base_cost + waste_after_amt
         price_per_kg = local_cost if local_cost else costing
-        selling = sales_price if sales_price else price_per_kg
+        selling = sales_price if sales_price else (price_per_kg * (1 + margin_pct_default/100.0))
     else:
-        # If RM matching is not possible, reverse-calculate from synced Local Cost so rows are not blank.
+        # If RM mapping cannot calculate raw material, use synced local/sales values
+        # and reverse-calculate missing rows so all fields show values.
         price_per_kg = local_cost if local_cost else (sales_price if sales_price else 0)
-        costing = price_per_kg
+        selling = sales_price if sales_price else price_per_kg
+        costing = price_per_kg if price_per_kg else (selling / 1.10 if selling else 0)
+        if not knitting:
+            # Estimate knitting from offline-style cost. Use 90 where cost supports it,
+            # otherwise keep zero for very small/new incomplete rows.
+            knitting = 90.0 if costing >= 120 else 0.0
         base_cost = costing / (1 + waste_after_pct / 100.0) if costing else 0
         raw_material = max(base_cost - knitting, 0) if base_cost else 0
+        cotton_yarn = raw_material
+        dyed_yarn = cotton_yarn + waste_amt + dyeing
+        cotton_prop = dyed_yarn
         waste_after_amt = base_cost * waste_after_pct / 100.0 if base_cost else 0
-        selling = sales_price if sales_price else price_per_kg
+        polyester_cost = polyester_cost or 0.0
+        spandex_cost = spandex_cost or 0.0
+        kora_cost = kora_cost or 0.0
 
-    margin = max(selling - costing, 0) if selling and costing else 0
-    margin_pct = (margin / costing * 100.0) if costing else 10.0
-    currency = 87.0
-    freight = 15.0
-    commission_pct = 5.0
-    commission = price_per_kg * commission_pct / 100.0 if price_per_kg else 0
-    total_inr = price_per_kg + freight + commission
-    total_usd = export_usd if export_usd else (total_inr / currency if currency else 0)
-    width_inch = width / 2.54 if width else 0
+    margin = selling - costing if selling and costing else 0.0
+    margin_pct = (margin / costing * 100.0) if costing else margin_pct_default
+    commission = price_per_kg * commission_pct / 100.0 if price_per_kg else 0.0
+    total_inr = price_per_kg + freight + commission + lc_interest if price_per_kg else 0.0
+    total_usd = export_usd if export_usd else (total_inr / currency if currency and total_inr else 0.0)
+
+    width_inch = width / 2.54 if width else 0.0
+    linear_mtrs = 100000.0 / (gsm * width) if gsm and width else 0.0
+    linear_yds = linear_mtrs * 1.0936133 if linear_mtrs else 0.0
+    price_usd_mtrs = total_usd / linear_mtrs if total_usd and linear_mtrs else 0.0
+    price_usd_yds = total_usd / linear_yds if total_usd and linear_yds else 0.0
+
+    def z(v, dec=2):
+        try:
+            return round(float(v), dec)
+        except Exception:
+            return 0
 
     return {
         "dev_sorts": clean_sort_value(sort_no),
         "sort_no": clean_sort_value(sort_no),
         "structure": getv(r, "structure"),
-        "finish_gsm": gsm,
-        "finish_width": width,
-        "width_cms": width,
-        "width_inch": width_inch,
-        "weight_gsm": gsm,
-        "cotton_yarn_costing": round(raw_material, 2) if raw_material else "",
-        "wastage": 0,
-        "dyeing_cost_rs": 0,
-        "dyed_yarn_cost_rs": round(raw_material, 2) if raw_material else "",
-        "cotton_dyed_proportion_cost": round(raw_material, 2) if raw_material else "",
-        "polyester_cost": "",
-        "spandex_cost": "",
-        "kora_yarn_cost": "",
-        "raw_material_cost": round(raw_material, 2) if raw_material else "",
-        "knittng__processing_cost": knitting,
-        "wastage_after_knitting_pct": waste_after_pct,
-        "wastage_2": round(waste_after_amt, 2) if waste_after_amt else "",
-        "costing": round(costing, 2) if costing else "",
-        "margin": round(margin, 2) if margin else "",
-        "margin_pct": round(margin_pct, 2) if margin_pct else 10,
-        "selling_price": round(selling, 2) if selling else "",
-        "price_per_kg_inr": round(price_per_kg, 2) if price_per_kg else "",
-        "currency_rate": currency,
+        "finish_gsm": z(gsm, 0),
+        "finish_width": z(width, 0),
+        "width_cms": z(width, 0),
+        "width_inch": z(width_inch, 2),
+        "weight_gsm": z(gsm, 0),
+        "cotton_yarn_costing": z(cotton_yarn, 2),
+        "wastage": z(waste_amt, 2),
+        "dyeing_cost_rs": z(dyeing, 2),
+        "dyed_yarn_cost_rs": z(dyed_yarn, 2),
+        "cotton_dyed_proportion_cost": z(cotton_prop, 2),
+        "polyester_cost": z(polyester_cost, 2),
+        "spandex_cost": z(spandex_cost, 2),
+        "kora_yarn_cost": z(kora_cost, 2),
+        "raw_material_cost": z(raw_material, 2),
+        "knittng__processing_cost": z(knitting, 2),
+        "wastage_after_knitting_pct": z(waste_after_pct, 2),
+        "wastage_2": z(waste_after_amt, 2),
+        "costing": z(costing, 2),
+        "margin": z(margin, 2),
+        "margin_pct": z(margin_pct, 2),
+        "selling_price": z(selling, 2),
+        "price_per_kg_inr": z(price_per_kg, 2),
+        "currency_rate": z(currency, 2),
         "discount_if_any": 0,
-        "freight_inr_per_kg": freight,
-        "commission_pct": commission_pct,
-        "commission": round(commission, 2) if commission else "",
-        "lc_days_interest": 0,
-        "total_cost_pricefreightcomlc_int_inr__kg": round(total_inr, 2) if total_inr else "",
-        "total_cost_usd__kg": round(total_usd, 2) if total_usd else "",
-        "price_usdkg": round(total_usd, 2) if total_usd else "",
+        "freight_inr_per_kg": z(freight, 2),
+        "commission_pct": z(commission_pct, 2),
+        "commission": z(commission, 2),
+        "lc_days_interest": z(lc_interest, 2),
+        "linear_mtrskg": z(linear_mtrs, 2),
+        "linear_ydgskg": z(linear_yds, 2),
+        "total_cost_pricefreightcomlc_int_inr__kg": z(total_inr, 2),
+        "total_cost_usd__kg": z(total_usd, 2),
+        "price_usdkg": z(total_usd, 2),
+        "price_usdmtrs": z(price_usd_mtrs, 2),
+        "price_usdyds": z(price_usd_yds, 2),
     }
 
 def get_sort_row(sort_no:str)->Dict[str,Any]:
