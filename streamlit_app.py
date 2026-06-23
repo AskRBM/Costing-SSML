@@ -17,7 +17,7 @@ DATA_DIR = BASE_DIR / "data"
 GROUP_CSV = DATA_DIR / "group_costing.csv"
 RM_CSV = DATA_DIR / "rm_price_master.csv"
 USERS_CSV = DATA_DIR / "users_default.csv"
-APP_VERSION = "2026-06-23-online-excel-green-cell-formula-v16"
+APP_VERSION = "2026-06-23-online-excel-green-cell-formula-v17-specs-index-fixed"
 
 # Online app now reads live synced data from Supabase first.
 # IMPORTANT: Put these same values in Streamlit Cloud Secrets also.
@@ -463,32 +463,65 @@ COTTON_SET_CATEGORIES = {"% OF INDIGO", "% OF DELTA", "% OF DEZIRE", "% OF IBST"
 def set_category_key(name: str) -> str:
     return str(name or "").strip().upper()
 
+def _ordered_specs_lookup_values(spec_row: Dict[str, Any]) -> List[Any]:
+    """Return values in the same logical order as Excel SPECS!B:EV.
+
+    Excel Set sheet uses VLOOKUP(SortNo, SPECS!B:EV, column_index, FALSE).
+    In Supabase synced SPECS we also have technical columns like sync_row_id and sr_no
+    before dev_sorts. Those must NOT be counted, otherwise Set row index 5 points
+    to Finish GSM instead of the first yarn percentage column.
+    """
+    if not isinstance(spec_row, dict):
+        return []
+    keys = list(spec_row.keys())
+    norm_keys = [norm_col(k) for k in keys]
+
+    # SPECS!B starts from Dev. Sorts / dev_sorts, not sr_no or sync_row_id.
+    start = 0
+    for wanted in ("dev_sorts", "sort_no", "sort", "dev_sort", "sorts"):
+        if wanted in norm_keys:
+            start = norm_keys.index(wanted)
+            break
+
+    ignore = {"sync_row_id", "sr_no", "created_at", "updated_at", "data"}
+    ordered = []
+    for k in keys[start:]:
+        if norm_col(k) in ignore:
+            continue
+        ordered.append(spec_row.get(k, ""))
+    return ordered
+
 def get_spec_pct_by_set_index(spec_row: Dict[str, Any], set_index: int, particular: str = "", yarn: str = "") -> float:
     """Excel Set sheet D(row): VLOOKUP(sort, SPECS!B:EV, F(row), FALSE).
-    In synced Supabase SPECS, columns are in the same order as SPECS B:EV,
-    so F=5 means dataframe column index 4.
-    Fallback also tries yarn/header names in case column order changes.
+
+    Important fix: Supabase has extra columns before Dev. Sorts, so the lookup array
+    is rebuilt from dev_sorts onward. This makes polyester, spandex, melange,
+    kora/grey, reactive, cooltex, recycle, dyed poly, micro modal and viscose
+    calculate the same way as the offline Excel-source formula.
     """
     if not isinstance(spec_row, dict):
         return 0.0
-    values = list(spec_row.values())
+
+    values = _ordered_specs_lookup_values(spec_row)
     idx = int(set_index) - 1
     if 0 <= idx < len(values):
         v = to_float(values[idx], 0)
+        # 0 is a valid percentage, but for fallback matching we only return when non-zero.
         if v != 0:
             return v
-    # fallback by matching normalized column names
+
+    # fallback by matching normalized yarn/header names in case Supabase column order changes
     yarn_norm = norm_col(str(yarn).replace("S ", "s "))
     part_norm = norm_col(particular)
-    keys = list(spec_row.keys())
-    for k in keys:
+    for k in spec_row.keys():
         nk = norm_col(k)
         if yarn_norm and (nk == yarn_norm or yarn_norm in nk or nk in yarn_norm):
             v = to_float(spec_row.get(k), 0)
             if v != 0:
                 return v
+
     # fallback for category in headers if any
-    for k in keys:
+    for k in spec_row.keys():
         nk = norm_col(k)
         if part_norm and (part_norm in nk or nk in part_norm):
             v = to_float(spec_row.get(k), 0)
