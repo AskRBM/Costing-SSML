@@ -17,7 +17,7 @@ DATA_DIR = BASE_DIR / "data"
 GROUP_CSV = DATA_DIR / "group_costing.csv"
 RM_CSV = DATA_DIR / "rm_price_master.csv"
 USERS_CSV = DATA_DIR / "users_default.csv"
-APP_VERSION = "2026-06-23-online-final-offline-match-v20"
+APP_VERSION = "2026-06-24-online-dyeing-dynamic-cost-hidezero-v21"
 
 # Online app now reads live synced data from Supabase first.
 # IMPORTANT: Put these same values in Streamlit Cloud Secrets also.
@@ -628,6 +628,9 @@ def calculate_set_sheet_costs(spec_row: Dict[str, Any], green: Dict[str, float] 
     green = green or {}
     category_amounts = {}
     category_pcts = {}
+    # Extra cost rows added from SPECS/RM Price (example: First Flight/SPS).
+    # These are displayed only when value > 0 and do not disturb Excel Set-sheet totals.
+    dynamic_display_amounts = {}
     cotton_prices_with_pct = []
 
     static_products = {str(yarn).strip().upper() for _, yarn, _, _ in SET_YARN_ROWS}
@@ -674,11 +677,17 @@ def calculate_set_sheet_costs(spec_row: Dict[str, Any], green: Dict[str, float] 
             continue
         price, rm_particular, rm_product = detail
         amount = price * pct / 100.0
-        cat = set_category_key(rm_particular)
-        if not cat:
-            cat = "% OF INDIGO"
+        cat_original = set_category_key(rm_particular)
+        cat = cat_original or "% OF INDIGO"
+        known_cost_cats = {"% WHITE POLY","% BLACK POLY","% OF LYCRA","% MELANGE","KORA / GREY","REACTIVE","COOLTEX","RECYCLE","DYED POLY","MICRO MODAL","VISCOSE"}
+        # If a new RM Particular is added (example: First Flight), show it as its own cost row when > 0.
+        if cat_original and cat_original not in known_cost_cats and not cat_original.startswith("% OF") and amount > 0:
+            label = str(rm_particular).strip()
+            if label:
+                label = label if label.lower().endswith("cost") else f"{label} Cost"
+                dynamic_display_amounts[label] = dynamic_display_amounts.get(label, 0.0) + amount
         # New cotton yarn names like PKS/SPS/First Flight are cotton-type unless clearly non-cotton.
-        if cat not in {"% WHITE POLY","% BLACK POLY","% OF LYCRA","% MELANGE","KORA / GREY","REACTIVE","COOLTEX","RECYCLE","DYED POLY","MICRO MODAL","VISCOSE"}:
+        if cat not in known_cost_cats:
             cat = "% OF INDIGO"
         category_amounts[cat] = category_amounts.get(cat, 0.0) + amount
         category_pcts[cat] = category_pcts.get(cat, 0.0) + pct
@@ -694,7 +703,14 @@ def calculate_set_sheet_costs(spec_row: Dict[str, Any], green: Dict[str, float] 
             price = live_price if live_price else float(default_price or 0)
             pct = to_float(pct, 0)
             amount = price * pct / 100.0
-            cat = set_category_key(particular)
+            cat_original = set_category_key(particular)
+            cat = cat_original
+            known_cost_cats = {"% WHITE POLY","% BLACK POLY","% OF LYCRA","% MELANGE","KORA / GREY","REACTIVE","COOLTEX","RECYCLE","DYED POLY","MICRO MODAL","VISCOSE"}
+            if cat_original and cat_original not in known_cost_cats and not cat_original.startswith("% OF") and amount > 0:
+                label = str(particular).strip()
+                if label:
+                    label = label if label.lower().endswith("cost") else f"{label} Cost"
+                    dynamic_display_amounts[label] = dynamic_display_amounts.get(label, 0.0) + amount
             if _is_cotton_like_particular(particular, yarn):
                 cat = "% OF INDIGO"
             category_amounts[cat] = category_amounts.get(cat, 0.0) + amount
@@ -707,7 +723,7 @@ def calculate_set_sheet_costs(spec_row: Dict[str, Any], green: Dict[str, float] 
 
     # Green cells from Excel Set/Cost Sheet
     waste_pct = to_float(green.get("wastage_pct"), 0.0)             # B6 / Waste %
-    dyeing_amt = to_float(green.get("dyeing_cost_rs"), 0.0)         # B7 / Dyeing amount
+    dyeing_amt = to_float(green.get("dyeing_cost_rs"), 110.0)       # B7 / Dyeing amount
     knitting_amt = to_float(green.get("knitting_processing_cost"), 90.0)  # B22 amount
     wastage_after_pct = to_float(green.get("wastage_after_knitting_pct"), 10.0)  # B23 %
     margin_pct = to_float(green.get("margin_pct"), 10.0)            # B25 %
@@ -773,6 +789,7 @@ def calculate_set_sheet_costs(spec_row: Dict[str, Any], green: Dict[str, float] 
         "dyed_poly_yarn_cost": dyed_poly_yarn_cost,
         "micro_modal": micro_modal,
         "viscose": viscose,
+        "_dynamic_cost_rows": [(k, v) for k, v in dynamic_display_amounts.items() if to_float(v, 0) > 0],
         "raw_material_cost": raw_material,
         "knittng__processing_cost": knitting_amt,
         "wastage_after_knitting_pct": wastage_after_pct,
@@ -877,7 +894,7 @@ def specs_cost_row_from_specs(spec_row: Dict[str, Any], sort_no: str) -> Dict[st
 
     green_defaults = {
         "wastage_pct": to_float(getv(r, "wastage_pct", "waste_pct_green"), 3.0),
-        "dyeing_cost_rs": to_float(getv(r, "dyeing_cost_rs"), 0.0),
+        "dyeing_cost_rs": to_float(getv(r, "dyeing_cost_rs"), 110.0),
         "knitting_processing_cost": to_float(getv(r, "knittng__processing_cost", "knitting_processing_cost"), 90.0),
         "wastage_after_knitting_pct": to_float(getv(r, "wastage_after_knitting_pct"), 10.0),
         "margin_pct": to_float(getv(r, "margin_pct"), 10.0),
@@ -905,6 +922,9 @@ def specs_cost_row_from_specs(spec_row: Dict[str, Any], sort_no: str) -> Dict[st
     }
     for k, v in calc.items():
         if k in ["finish_gsm", "finish_width"]:
+            continue
+        if str(k).startswith("_"):
+            out[k] = v
             continue
         out[k] = z(v, 2)
     # If old uploaded/synced price fields exist and are non-zero, keep them only as a fallback.
@@ -1095,7 +1115,7 @@ def apply_whatif(row:Dict[str,Any], wf:Dict[str,float])->Dict[str,Any]:
     r=dict(row)
     green = {
         "wastage_pct": to_float(wf.get("wastage"), to_float(getv(r,"wastage_pct_green"), derive_waste_pct(r))),
-        "dyeing_cost_rs": to_float(wf.get("dyeing_cost_rs"), to_float(getv(r,"dyeing_cost_rs"),0)),
+        "dyeing_cost_rs": to_float(wf.get("dyeing_cost_rs"), to_float(getv(r,"dyeing_cost_rs"),110)),
         "knitting_processing_cost": to_float(wf.get("knittng__processing_cost"), to_float(getv(r,"knittng__processing_cost"),90)),
         "wastage_after_knitting_pct": to_float(wf.get("wastage_after_knitting_pct"), derive_after_knitting_pct(r)),
         "discount_if_any": to_float(wf.get("discount_if_any"), to_float(getv(r,"discount_if_any"),0)),
@@ -1325,6 +1345,39 @@ def html_composition_table(rows: List[tuple]) -> str:
       </table>
     </div>"""
 
+
+def _should_show_cost_row(label: str, value: Any) -> bool:
+    optional = {
+        "Polyester Cost", "Spandex Cost", "Melange Cost", "Kora Yarn Cost",
+        "Reactive Yarn Cost", "Cooltex Yarn Cost", "Recycle Yarn Cost",
+        "Dyed Poly Yarn Cost", "Micro Modal", "Viscose"
+    }
+    if label in optional and abs(to_float(value, 0)) < 0.000001:
+        return False
+    return True
+
+def dynamic_cost_rows_from_row(row: Dict[str, Any]) -> List[tuple]:
+    rows = getv(row, "_dynamic_cost_rows", default=[])
+    if isinstance(rows, str):
+        try:
+            rows = json.loads(rows)
+        except Exception:
+            rows = []
+    out = []
+    if isinstance(rows, list):
+        for item in rows:
+            try:
+                if isinstance(item, dict):
+                    label = str(item.get("label") or item.get("particular") or "Extra Cost")
+                    val = item.get("value", item.get("amount", 0))
+                else:
+                    label, val = item[0], item[1]
+                if to_float(val, 0) > 0:
+                    out.append((str(label), val))
+            except Exception:
+                pass
+    return out
+
 # ---------- pages ----------
 def cost_sheet_page():
     header("Costing")
@@ -1409,12 +1462,17 @@ def cost_sheet_page():
                 st.rerun()
         st.table(rows_to_df(freight_master_rows()))
 
-    cost_rows=[
+    base_cost_rows=[
         ("Cotton Yarn Costing",getv(row,'cotton_yarn_costing')),("Wastage %",getv(row,'wastage')),("Dyeing Cost Rs.",getv(row,'dyeing_cost_rs')),
         ("Dyed Yarn Cost Rs.",getv(row,'dyed_yarn_cost_rs')),("Cotton Dyed Proportion Cost",getv(row,'cotton_dyed_proportion_cost')),
         ("Polyester Cost",getv(row,'polyester_cost')),("Spandex Cost",getv(row,'spandex_cost')),("Melange Cost",getv(row,'melange_cost')),
         ("Kora Yarn Cost",getv(row,'kora_yarn_cost')),("Reactive Yarn Cost",getv(row,'reactive_yarn_cost')),("Cooltex Yarn Cost",getv(row,'cooltex_yarn_cost')),
         ("Recycle Yarn Cost",getv(row,'recycle_yarn_cost')),("Dyed Poly Yarn Cost",getv(row,'dyed_poly_yarn_cost')),("Micro Modal",getv(row,'micro_modal')),("Viscose",getv(row,'viscose')),
+    ]
+    cost_rows=[x for x in base_cost_rows if _should_show_cost_row(x[0], x[1])]
+    # Auto-show any newly added SPECS/RM Particular cost row, for example First Flight Cost, only when value > 0.
+    cost_rows += dynamic_cost_rows_from_row(row)
+    cost_rows += [
         ("Raw Material Cost",getv(row,'raw_material_cost')),("Knitting + Processing Cost",getv(row,'knittng__processing_cost')),
         ("Wastage % After Knitting",getv(row,'wastage_after_knitting_pct', default=derive_after_knitting_pct(row))),
         ("Wastage After Knitting Cost",getv(row,'wastage_2')),("Costing",getv(row,'costing')),("Margin",getv(row,'margin')),("Selling Price",getv(row,'selling_price')),
