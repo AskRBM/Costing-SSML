@@ -17,7 +17,7 @@ DATA_DIR = BASE_DIR / "data"
 GROUP_CSV = DATA_DIR / "group_costing.csv"
 RM_CSV = DATA_DIR / "rm_price_master.csv"
 USERS_CSV = DATA_DIR / "users_default.csv"
-APP_VERSION = "2026-06-24-online-freight-master-add-edit-v24"
+APP_VERSION = "2026-06-24-online-composition-related-sort-only-v25"
 
 # Online app now reads live synced data from Supabase first.
 # IMPORTANT: Put these same values in Streamlit Cloud Secrets also.
@@ -1416,33 +1416,90 @@ def html_table(title:str, rows:List[tuple], header_extra:str="")->str:
 
 
 
-def composition_rows_from_specs(spec_row: Dict[str, Any], sort_no: str) -> List[tuple]:
-    """Online Yarn / Composition Summary same as offline.
-    Shows PKS/SPS and other new yarns with live RM Price and Calc Value.
+def _raw_specs_row_for_sort(sort_no: str) -> Dict[str, Any]:
+    """Return the original SPECS row for selected Sort No.
+    Cost Sheet row can come from group_costing and contains calculated fields;
+    composition summary must use only SPECS yarn percentage columns.
     """
+    target = clean_sort_value(sort_no)
+    try:
+        sdf = load_specs()
+        if sdf is None or sdf.empty:
+            return {}
+        c = next((x for x in ["dev_sorts", "sort_no", "sort", "dev_sort", "sorts"] if x in sdf.columns), group_sort_col(sdf))
+        if c not in sdf.columns:
+            return {}
+        m = sdf[sdf[c].apply(clean_sort_value) == target]
+        if not m.empty:
+            return m.iloc[0].to_dict()
+    except Exception:
+        pass
+    return {}
+
+
+def composition_rows_from_specs(spec_row: Dict[str, Any], sort_no: str) -> List[tuple]:
+    """Yarn / Composition Summary for selected Sort No only.
+
+    Fix: previous version sometimes received the calculated cost row from
+    group_costing, so rows like Cotton Yarn Costing, Costing, Total INR etc.
+    were treated as yarn percentages. This version always reads the raw SPECS
+    row for the selected Sort No and ignores all calculated fields.
+    """
+    raw_row = _raw_specs_row_for_sort(sort_no)
+    if raw_row:
+        spec_row = raw_row
+    else:
+        spec_row = dict(spec_row or {})
+
     rows=[]
     seen=set()
+
+    # 1) Offline-created dynamic yarns, e.g. PKS/SPS for 1202.
     for particular, yarn, pct, default_price in extra_sort_yarn_items_for_specs(spec_row):
+        pct = to_float(pct, 0)
+        if pct <= 0:
+            continue
         live = rm_price_lookup(yarn, particular)
         price = live if live else to_float(default_price, 0)
-        calc = price * to_float(pct, 0) / 100.0 if price else 0
+        calc = price * pct / 100.0 if price else 0
         rows.append((particular, yarn, price, pct, calc, "online-extra"))
         seen.add((_clean_rm_text(particular), _clean_rm_text(yarn)))
 
+    # 2) Excel Set-sheet mapped rows. Show only rows where selected Sort No has %.
+    for particular, yarn, default_price, set_idx in SET_YARN_ROWS:
+        pct = get_spec_pct_by_set_index(spec_row, set_idx, particular, yarn)
+        if pct <= 0:
+            continue
+        live = rm_price_lookup(yarn, particular)
+        price = live if live else float(default_price or 0)
+        calc = price * pct / 100.0 if price else 0
+        sig=(_clean_rm_text(particular), _clean_rm_text(yarn))
+        if sig in seen:
+            continue
+        rows.append((particular, yarn, price, pct, calc, set_idx))
+        seen.add(sig)
+
+    # 3) Dynamic SPECS columns that are real yarn/product columns, not calculated values.
+    # This keeps future newly added yarns visible without showing all cost fields.
     skip = {
         "sync_row_id","sr_no","dev_sorts","sort_no","sort","dev_sort","sorts","structure",
         "finish_gsm","finish_width","finish_widt","gsm","width","width_cms","weight_gsm","width_inch",
-        "local_cost","sales_price","selling_price","price","price_per_kg_inr","costing",
+        "local_cost","sales_price","selling_price","price","price_per_kg_inr","costing","margin","margin_pct",
         "export_cost_inr","export_price_fc","price_usdkg","price_usdmtrs","price_usdyds",
-        "total_cost_usd__kg","total_cost_pricefreightcomlc_int_inr__kg",
-        "created_at","updated_at","data","cotton","poly","tencel","spandex"
+        "total_cost_usd__kg","total_cost_pricefreightcomlc_int_inr__kg","total_cost_inr_kg","total_cost_usd_kg",
+        "cotton_yarn_costing","wastage","wastage_pct","waste_pct_green","dyeing_cost_rs","dyed_yarn_cost_rs",
+        "cotton_dyed_proportion_cost","polyester_cost","spandex_cost","melange_cost","kora_yarn_cost",
+        "reactive_yarn_cost","cooltex_yarn_cost","recycle_yarn_cost","dyed_poly_yarn_cost","micro_modal","viscose",
+        "raw_material_cost","knittng__processing_cost","knitting_processing_cost","wastage_after_knitting_pct","wastage_2",
+        "currency_rate","discount_if_any","freight_inr_per_kg","commission_pct","commission","lc_days_interest","lc_interest_amount",
+        "linear_mtrskg","linear_ydgskg","created_at","updated_at","data","cotton","poly","tencel","spandex"
     }
     for col, val in (spec_row or {}).items():
         c = norm_col(col)
         if c in skip:
             continue
         pct = to_float(val, 0)
-        if pct <= 0 or pct > 1000:
+        if pct <= 0 or pct > 100:
             continue
         yarn = spec_col_to_product(col)
         detail = rm_price_lookup_detail(yarn)
@@ -1457,15 +1514,6 @@ def composition_rows_from_specs(spec_row: Dict[str, Any], sort_no: str) -> List[
         calc = price * pct / 100.0
         rows.append((particular, rm_product or yarn, price, pct, calc, col))
         seen.add(sig)
-
-    if not rows:
-        for particular, yarn, default_price, set_idx in SET_YARN_ROWS:
-            pct = get_spec_pct_by_set_index(spec_row, set_idx, particular, yarn)
-            if pct <= 0:
-                continue
-            price = rm_price_lookup(yarn, particular) or float(default_price or 0)
-            calc = price * pct / 100.0 if price else 0
-            rows.append((particular, yarn, price, pct, calc, set_idx))
 
     cotton_pct = sum(to_float(r[3],0) for r in rows if _is_cotton_like_particular(r[0], r[1]))
     spandex_pct = sum(to_float(r[3],0) for r in rows if any(x in (str(r[0])+str(r[1])).upper() for x in ["LYCRA","SPANDEX","ELAST"]))
