@@ -17,7 +17,7 @@ DATA_DIR = BASE_DIR / "data"
 GROUP_CSV = DATA_DIR / "group_costing.csv"
 RM_CSV = DATA_DIR / "rm_price_master.csv"
 USERS_CSV = DATA_DIR / "users_default.csv"
-APP_VERSION = "2026-06-24-whatif-fix-per-sort-v23"
+APP_VERSION = "2026-06-24-online-freight-master-add-edit-v24"
 
 # Online app now reads live synced data from Supabase first.
 # IMPORTANT: Put these same values in Streamlit Cloud Secrets also.
@@ -467,7 +467,7 @@ def fetch_live_supabase_now():
     except Exception:
         pass
     for k in list(st.session_state.keys()):
-        if str(k).startswith("sb_") or str(k) in ("group_df", "rm_df", "users_df", "_rm_df_live_cached", "_composition_cache"):
+        if str(k).startswith("sb_") or str(k) in ("group_df", "rm_df", "users_df", "_rm_df_live_cached", "_composition_cache", "freight_master_df"):
             st.session_state.pop(k, None)
     # Touch tables so status immediately appears after button click.
     _ = supabase_table_df("specs")
@@ -476,6 +476,7 @@ def fetch_live_supabase_now():
     _ = supabase_table_df("rm_price_master")
     _ = supabase_table_df("price_history")
     _ = supabase_table_df("app_users")
+    _ = supabase_table_df("freight_master")
 
 
 def to_float(x:Any, default:float=0.0)->float:
@@ -566,7 +567,7 @@ def sort_options()->List[str]:
                     seen.add(v); vals.append(v)
     return sorted(vals, key=sort_key_value)
 
-FREIGHT_MASTER = {
+DEFAULT_FREIGHT_MASTER = {
     "Bangladesh": 15.0,
     "Vietnam": 20.0,
     "Sri Lanka": 18.0,
@@ -575,8 +576,62 @@ FREIGHT_MASTER = {
     "UAE": 35.0,
 }
 
+def load_freight_master_df() -> pd.DataFrame:
+    """Live editable Freight Master.
+    Priority: session edited table -> Supabase freight_master -> default table.
+    Columns kept simple: country, freight. This works with offline sync table also.
+    """
+    if "freight_master_df" in st.session_state:
+        try:
+            df = st.session_state["freight_master_df"].copy().fillna("")
+            if not df.empty:
+                return df
+        except Exception:
+            pass
+    df_live = supabase_table_df("freight_master")
+    if not df_live.empty:
+        x = df_live.copy().fillna("")
+        x.columns = [norm_col(c) for c in x.columns]
+        if "country" not in x.columns:
+            for c in ["particulars", "name", "country_name"]:
+                if c in x.columns:
+                    x["country"] = x[c]; break
+        if "freight" not in x.columns:
+            for c in ["freight_inr_kg", "freight_inr_per_kg", "freight_rate", "rate", "value"]:
+                if c in x.columns:
+                    x["freight"] = x[c]; break
+        if "country" in x.columns and "freight" in x.columns:
+            x = x[["country", "freight"]].copy()
+            x["country"] = x["country"].astype(str).str.strip()
+            x["freight"] = x["freight"].map(lambda v: to_float(v, 0))
+            x = x[x["country"] != ""]
+            x = x.drop_duplicates(subset=["country"], keep="last").reset_index(drop=True)
+            if not x.empty:
+                st.session_state["freight_master_df"] = x.copy()
+                return x
+    x = pd.DataFrame([{"country": k, "freight": v} for k, v in DEFAULT_FREIGHT_MASTER.items()])
+    st.session_state["freight_master_df"] = x.copy()
+    return x
+
+def save_freight_master_df(df: pd.DataFrame) -> tuple[bool, str]:
+    x = df.copy().fillna("")
+    if "country" not in x.columns: x["country"] = ""
+    if "freight" not in x.columns: x["freight"] = 0
+    x["country"] = x["country"].astype(str).str.strip()
+    x["freight"] = x["freight"].map(lambda v: to_float(v, 0))
+    x = x[x["country"] != ""].drop_duplicates(subset=["country"], keep="last").reset_index(drop=True)
+    st.session_state["freight_master_df"] = x.copy()
+    # Save to Supabase if write key is configured. If it fails, session still works.
+    records = x.to_dict(orient="records")
+    ok, msg = supabase_post_records("freight_master", records, "country")
+    return ok, msg
+
+def freight_master_dict() -> Dict[str, float]:
+    df = load_freight_master_df()
+    return {str(r.get("country","")).strip(): to_float(r.get("freight"),0) for _, r in df.iterrows() if str(r.get("country","")).strip()}
+
 def freight_master_rows() -> List[tuple]:
-    return [(country, rate) for country, rate in FREIGHT_MASTER.items()]
+    return [(k, v) for k, v in freight_master_dict().items()]
 
 
 
@@ -1499,7 +1554,12 @@ def cost_sheet_page():
     print_placeholder = c3.empty()
     export_placeholder = c4.empty()
     with c6: st.markdown('<div class="country-inline-label">Country</div>', unsafe_allow_html=True)
-    with c7: country_selected = st.selectbox("Country", ["Bangladesh","Vietnam","Sri Lanka","Japan","USA","UAE"], index=0, label_visibility="collapsed", key="country_select")
+    with c7:
+        freight_map = freight_master_dict()
+        country_list = list(freight_map.keys()) or ["Bangladesh"]
+        current_country = st.session_state.get("country_select", country_list[0])
+        country_index = country_list.index(current_country) if current_country in country_list else 0
+        country_selected = st.selectbox("Country", country_list, index=country_index, label_visibility="collapsed", key="country_select")
 
     base=get_sort_row(sort)
     if not base:
@@ -1560,16 +1620,45 @@ def cost_sheet_page():
         st.session_state["show_freight_master"] = not st.session_state.get("show_freight_master", False)
         st.rerun()
     if st.session_state.get("show_freight_master", False):
-        st.markdown("<div class='ok'><b>Freight Master</b> - Country wise default freight INR/KG. Select country and click Apply Country Freight.</div>", unsafe_allow_html=True)
-        fcols = st.columns([1.5,1,1,6], gap="small")
-        with fcols[0]: st.write("Country")
-        with fcols[1]: st.write("Freight INR/KG")
+        st.markdown("<div class='ok'><b>Freight Master</b> - Add/Edit country freight INR/KG. Select country and click Apply Country Freight.</div>", unsafe_allow_html=True)
+        freight_df = load_freight_master_df()
+        fcols = st.columns([1.1,0.8,0.9,0.9,0.9,4.2], gap="small")
+        with fcols[0]:
+            new_country = st.text_input("Country", value=country_selected, key="fm_country_input")
+        with fcols[1]:
+            default_rate = freight_master_dict().get(country_selected, vals.get("freight_inr_per_kg", 0))
+            new_freight = st.number_input("Freight INR/KG", value=float(default_rate), step=1.0, format="%.2f", key="fm_freight_input")
         with fcols[2]:
+            if st.button("Add / Update", key="fm_add_update_btn"):
+                x = freight_df.copy()
+                c = str(new_country).strip()
+                if not c:
+                    st.warning("Country name required.")
+                else:
+                    if not x.empty and "country" in x.columns and c.lower() in x["country"].astype(str).str.lower().tolist():
+                        x.loc[x["country"].astype(str).str.lower()==c.lower(), "freight"] = float(new_freight)
+                    else:
+                        x = pd.concat([x, pd.DataFrame([{"country": c, "freight": float(new_freight)}])], ignore_index=True)
+                    ok, msg = save_freight_master_df(x)
+                    if ok: st.success("Freight Master saved.")
+                    else: st.warning("Saved in this session. Supabase save failed: " + str(msg))
+                    st.rerun()
+        with fcols[3]:
+            if st.button("Delete", key="fm_delete_btn"):
+                c = str(new_country).strip().lower()
+                x = freight_df.copy()
+                if c and not x.empty and "country" in x.columns:
+                    x = x[x["country"].astype(str).str.lower()!=c].reset_index(drop=True)
+                    ok, msg = save_freight_master_df(x)
+                    if ok: st.success("Country deleted.")
+                    else: st.warning("Deleted in this session. Supabase save failed: " + str(msg))
+                    st.rerun()
+        with fcols[4]:
             if st.button("Apply Country Freight", key="apply_country_freight_btn"):
-                vals["freight_inr_per_kg"] = FREIGHT_MASTER.get(country_selected, vals.get("freight_inr_per_kg", 0))
+                vals["freight_inr_per_kg"] = freight_master_dict().get(country_selected, vals.get("freight_inr_per_kg", 0))
                 st.session_state[wf_key] = vals
                 st.rerun()
-        st.table(rows_to_df(freight_master_rows()))
+        st.dataframe(load_freight_master_df(), use_container_width=True, height=220)
 
     base_cost_rows=[
         ("Cotton Yarn Costing",getv(row,'cotton_yarn_costing')),("Wastage %",getv(row,'wastage')),("Dyeing Cost Rs.",getv(row,'dyeing_cost_rs')),
