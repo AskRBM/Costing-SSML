@@ -1144,7 +1144,7 @@ def header(title="Costing"):
             if cols[i].button(m, key=f"nav_btn_{m}", type=btn_type, use_container_width=True):
                 st.session_state.module = m
                 st.rerun()
-        if cols[-2].button("Fetch Supabase", key="nav_fetch_supabase_btn", use_container_width=True):
+        if cols[-2].button("Fetch ", key="nav_fetch_btn", use_container_width=True):
             fetch_live_supabase_now()
             st.rerun()
         if cols[-1].button("Logout", key="nav_logout_btn", use_container_width=True):
