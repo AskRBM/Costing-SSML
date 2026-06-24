@@ -17,7 +17,7 @@ DATA_DIR = BASE_DIR / "data"
 GROUP_CSV = DATA_DIR / "group_costing.csv"
 RM_CSV = DATA_DIR / "rm_price_master.csv"
 USERS_CSV = DATA_DIR / "users_default.csv"
-APP_VERSION = "2026-06-24-online-user-save-fast-composition-v22"
+APP_VERSION = "2026-06-24-whatif-fix-per-sort-v23"
 
 # Online app now reads live synced data from Supabase first.
 # IMPORTANT: Put these same values in Streamlit Cloud Secrets also.
@@ -1144,7 +1144,7 @@ def header(title="Costing"):
             if cols[i].button(m, key=f"nav_btn_{m}", type=btn_type, use_container_width=True):
                 st.session_state.module = m
                 st.rerun()
-        if cols[-2].button("Fetch ", key="nav_fetch_btn", use_container_width=True):
+        if cols[-2].button("Fix Me", key="nav_Fix_Me_btn", use_container_width=True):
             fetch_live_supabase_now()
             st.rerun()
         if cols[-1].button("Logout", key="nav_logout_btn", use_container_width=True):
@@ -1490,7 +1490,7 @@ def cost_sheet_page():
     if selected not in sorts: selected=sorts[0]
 
     # Top compact control line is outside form so changing Sort No updates values immediately.
-    c0,c1,c2,c3,c4,c5,c6,c7,c8,c9,c10=st.columns([1.12,1.38,0.48,0.72,0.82,0.08,0.44,0.78,0.48,0.78,0.44], gap="small")
+    c0,c1,c2,c3,c4,c5,c6,c7,c8,c9,c10,c11=st.columns([1.12,1.38,0.48,0.72,0.82,0.05,0.44,0.78,0.48,0.38,0.78,0.44], gap="small")
     with c0: st.markdown('<div class="label">Sort No (Excel D1):</div>', unsafe_allow_html=True)
     with c1:
         sort=st.selectbox("Sort No", sorts, index=sorts.index(selected), label_visibility="collapsed", key="selected_sort")
@@ -1507,8 +1507,11 @@ def cost_sheet_page():
         return
 
     wf_key=f"wf_{sort}"
+    fixed_wf_key=f"fixed_wf_{sort}"
     applied = st.session_state.get(wf_key)
-    row = apply_whatif(base, applied) if applied else base
+    fixed_applied = st.session_state.get(fixed_wf_key)
+    effective_wf = applied if applied else fixed_applied
+    row = apply_whatif(base, effective_wf) if effective_wf else base
 
     st.markdown('<div class="whatif-title">What-If Analysis</div>', unsafe_allow_html=True)
     cols=st.columns(9, gap="small")
@@ -1531,14 +1534,26 @@ def cost_sheet_page():
     with c8:
         submitted=st.button("Apply", type="primary", key="top_apply_btn")
     with c9:
-        freight_clicked=st.button("Freight Master", key="top_freight_btn")
+        fixed_clicked=st.button("Fix", key="top_fix_btn")
     with c10:
+        freight_clicked=st.button("Freight Master", key="top_freight_btn")
+    with c11:
         cleared=st.button("Clear", key="top_clear_btn")
     if submitted:
+        # Apply is temporary for current browser/session only.
         st.session_state[wf_key]=vals
         st.rerun()
+    if fixed_clicked:
+        # Fix saves What-If values for this selected Sort No only.
+        # Other Sort Nos remain unchanged.
+        st.session_state[fixed_wf_key]=vals
+        st.session_state[wf_key]=vals
+        st.success(f"What-If fixed for Sort No {sort}. Other Sort Nos unchanged.")
+        st.rerun()
     if cleared:
+        # Clear removes temporary + fixed values only for this Sort No.
         st.session_state.pop(wf_key, None)
+        st.session_state.pop(fixed_wf_key, None)
         st.session_state.pop("show_freight_master", None)
         st.rerun()
     if freight_clicked:
