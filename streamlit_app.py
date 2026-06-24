@@ -17,7 +17,7 @@ DATA_DIR = BASE_DIR / "data"
 GROUP_CSV = DATA_DIR / "group_costing.csv"
 RM_CSV = DATA_DIR / "rm_price_master.csv"
 USERS_CSV = DATA_DIR / "users_default.csv"
-APP_VERSION = "2026-06-24-online-dyeing-dynamic-cost-hidezero-v21"
+APP_VERSION = "2026-06-24-online-user-save-fast-composition-v22"
 
 # Online app now reads live synced data from Supabase first.
 # IMPORTANT: Put these same values in Streamlit Cloud Secrets also.
@@ -224,6 +224,49 @@ def supabase_table_df(table: str, limit: int = 100000) -> pd.DataFrame:
     st.session_state[f"sb_error_{table}"] = msg
     return pd.DataFrame()
 
+
+
+def _supabase_write_key() -> str:
+    # Online writes need service key when RLS is enabled. If service key is not present,
+    # it will try publishable key also, but Supabase may reject it depending on policy.
+    return (ONLINE_SUPABASE_SERVICE_KEY or ONLINE_SUPABASE_KEY or "").strip()
+
+def supabase_post_records(table: str, records: List[Dict[str, Any]], on_conflict: str = "") -> tuple[bool, str]:
+    if not records:
+        return True, "No records"
+    if not ONLINE_SUPABASE_URL or not _supabase_write_key():
+        return False, "Supabase URL/key missing"
+    try:
+        query = ""
+        if on_conflict:
+            query = "?on_conflict=" + urllib.parse.quote(on_conflict)
+        url = f"{ONLINE_SUPABASE_URL}/rest/v1/{urllib.parse.quote(table)}{query}"
+        headers = _sb_headers(_supabase_write_key())
+        headers["Prefer"] = "resolution=merge-duplicates,return=minimal"
+        clean=[]
+        for rec in records:
+            out={}
+            for k,v in rec.items():
+                if isinstance(v, (pd.Timestamp, datetime)):
+                    v = v.isoformat()
+                elif pd.isna(v) if not isinstance(v, (list,dict,tuple)) else False:
+                    v = ""
+                out[str(k)] = v
+            clean.append(out)
+        data=json.dumps(clean, default=str).encode("utf-8")
+        req=urllib.request.Request(url, data=data, headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=45) as resp:
+            _=resp.read()
+        return True, "Saved"
+    except urllib.error.HTTPError as e:
+        try:
+            body=e.read().decode("utf-8", errors="ignore")
+        except Exception:
+            body=str(e)
+        return False, f"HTTP {e.code}: {body[:400]}"
+    except Exception as e:
+        return False, str(e)
+
 # ---------- data helpers ----------
 def norm_col(c:str)->str:
     return str(c).strip().lower().replace("/", "_").replace(" ", "_").replace(".", "").replace("%", "pct").replace("-", "_").replace("__", "_")
@@ -298,7 +341,15 @@ def load_rm() -> pd.DataFrame:
     rm_price_master. We merge both, plus price_history/csv fallback, and keep
     the latest row by Particulars + Product. This makes new items like PKS/SPS
     immediately available for online costing after Sync/Fetch.
+
+    Speed fix: this dataframe is cached in session_state during the current app
+    session; Fetch Supabase clears it.
     """
+    if "_rm_df_live_cached" in st.session_state:
+        try:
+            return st.session_state["_rm_df_live_cached"].copy()
+        except Exception:
+            pass
     frames = []
     source_priority = {"csv": 0, "price_history": 1, "rm_current": 2, "rm_price_master": 3}
     for table in ["rm_price_master", "rm_current", "price_history"]:
@@ -329,13 +380,17 @@ def load_rm() -> pd.DataFrame:
             st.session_state["sb_count_rm_all"] = len(df)
         except Exception:
             pass
-        return df.reset_index(drop=True)
+        df = df.reset_index(drop=True)
+        st.session_state["_rm_df_live_cached"] = df.copy()
+        return df
     if "rm_df" not in st.session_state:
         st.session_state.rm_df = read_csv(str(RM_CSV))
+    st.session_state["_rm_df_live_cached"] = st.session_state.rm_df.copy()
     return st.session_state.rm_df.copy()
 
 def save_rm(df: pd.DataFrame):
     st.session_state.rm_df = df.copy()
+    st.session_state.pop("_rm_df_live_cached", None)
 
 def load_users() -> pd.DataFrame:
     # Live synced users from offline app. Falls back to GitHub users_default.csv.
@@ -364,7 +419,46 @@ def load_users() -> pd.DataFrame:
     return st.session_state.users_df.copy()
 
 def save_users(df: pd.DataFrame):
+    """Save users in session and also write to Supabase so users do not disappear
+    after changing module/reloading.
+    """
+    df = df.copy().fillna("")
     st.session_state.users_df=df.copy()
+
+    if df.empty or "username" not in df.columns:
+        return True, "No users"
+
+    # Keep only app_users columns existing in the online table.
+    app_cols = ["username","password","role","name","code","is_active",
+                "can_cost_sheet","can_cost_local","can_cost_export","can_add_sort",
+                "can_edit_sort","can_delete_sort","can_rm_price","can_users","created_at"]
+    upload = df.copy()
+    for c in app_cols:
+        if c not in upload.columns:
+            if c == "is_active": upload[c] = "1"
+            elif c == "created_at": upload[c] = datetime.now().isoformat()
+            elif c in ("name","code"): upload[c] = ""
+            else: upload[c] = "False"
+    records = upload[[c for c in app_cols if c in upload.columns]].to_dict(orient="records")
+    ok, msg = supabase_post_records("app_users", records, "username")
+
+    # Also save role_permissions for offline/online permission compatibility.
+    perm_records=[]
+    module_map = {
+        "can_cost_sheet":"Cost Sheet", "can_cost_local":"Cost - Local",
+        "can_cost_export":"Cost - Export", "can_add_sort":"Add Sort",
+        "can_rm_price":"RM Price", "can_users":"Users",
+    }
+    for _, r in upload.iterrows():
+        uname = str(r.get("username","")).strip()
+        if not uname: continue
+        for col, mod in module_map.items():
+            can = str(r.get(col,"False")).strip().lower() in ("true","1","yes","y","on")
+            perm_records.append({"username": uname, "module": mod, "can_access": 1 if can else 0})
+    ok2, msg2 = supabase_post_records("role_permissions", perm_records, "username,module") if perm_records else (True, "")
+    st.session_state.pop("sb_error_app_users", None)
+    st.session_state.pop("sb_count_app_users", None)
+    return (ok and ok2), (msg if not ok else msg2)
 
 def fetch_live_supabase_now():
     # Clear CSV/session cache and force fresh Supabase read.
@@ -373,7 +467,7 @@ def fetch_live_supabase_now():
     except Exception:
         pass
     for k in list(st.session_state.keys()):
-        if str(k).startswith("sb_") or str(k) in ("group_df", "rm_df", "users_df"):
+        if str(k).startswith("sb_") or str(k) in ("group_df", "rm_df", "users_df", "_rm_df_live_cached", "_composition_cache"):
             st.session_state.pop(k, None)
     # Touch tables so status immediately appears after button click.
     _ = supabase_table_df("specs")
@@ -1506,7 +1600,13 @@ def cost_sheet_page():
     )
     st.markdown(f'<div class="table-grid">{html_table("Cost Build-up",cost_rows,cost_header_kpis)}{html_table("Export / Price Calculation",export_rows,export_header_kpis)}</div>', unsafe_allow_html=True)
     try:
-        st.markdown(html_composition_table(composition_rows_from_specs(base, sort)), unsafe_allow_html=True)
+        comp_cache = st.session_state.setdefault("_composition_cache", {})
+        rm_count_sig = str(st.session_state.get("sb_count_rm_all", "")) + "|" + str(st.session_state.get("sb_count_rm_price_master", "")) + "|" + str(st.session_state.get("sb_count_rm_current", ""))
+        comp_key = f"{APP_VERSION}|{sort}|{rm_count_sig}"
+        if comp_key not in comp_cache:
+            comp_cache.clear()
+            comp_cache[comp_key] = html_composition_table(composition_rows_from_specs(base, sort))
+        st.markdown(comp_cache[comp_key], unsafe_allow_html=True)
     except Exception:
         pass
     st.markdown('<div class="footer"><span>Publisher: <b>RBM Textile Solutions</b></span><span>Offline Textile Costing • Actual Excel Data • Print Preview • Backup</span><span>Made in India 🇮🇳</span></div><div class="content-pad"></div>', unsafe_allow_html=True)
@@ -1650,7 +1750,12 @@ def users_page():
                 old_created = edit_row.get('created_at', datetime.now().isoformat()) if edit_row else datetime.now().isoformat()
                 row={'username':final_username,'password':password,'role':role, **{k:v for k,v in vals.items()}, 'can_edit_sort': vals.get('can_add_sort',False), 'can_delete_sort': vals.get('can_add_sort',False), 'created_at':old_created}
                 df=df[df['username'].astype(str).str.lower()!=str(final_username).lower()] if 'username' in df.columns else df
-                df=pd.concat([df,pd.DataFrame([row])],ignore_index=True); save_users(df); st.success("User updated." if edit_choice != "Create New User" else "User saved.")
+                df=pd.concat([df,pd.DataFrame([row])],ignore_index=True)
+                ok_save, save_msg = save_users(df)
+                if ok_save:
+                    st.success("User updated and saved online." if edit_choice != "Create New User" else "User saved online.")
+                else:
+                    st.warning("User saved in this session, but online Supabase save failed: " + str(save_msg))
     show=df.copy()
     if st.session_state.role!="Developer" and 'role' in show.columns:
         show=show[show['role'].astype(str)!="Developer"]
