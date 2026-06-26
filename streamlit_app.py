@@ -460,6 +460,7 @@ def save_users(df: pd.DataFrame):
     st.session_state.pop("sb_count_app_users", None)
     return (ok and ok2), (msg if not ok else msg2)
 
+@st.cache_data(ttl=300, show_spinner=False)
 def fetch_live_supabase_now():
     # Clear CSV/session cache and force fresh Supabase read.
     try:
@@ -984,6 +985,7 @@ def spec_col_to_product(col: str) -> str:
 def _clean_rm_text(v: Any) -> str:
     return " ".join(str(v or "").strip().upper().replace("-", " ").replace("_", " ").split())
 
+@st.cache_data(ttl=300, show_spinner=False)
 def rm_price_lookup_detail(product: str, particular: str = ""):
     """Return (price, particulars, product) from merged live RM tables.
     Exact product+particular first, then product-only, then loose normalized match.
@@ -1027,6 +1029,7 @@ def rm_price_lookup_detail(product: str, particular: str = ""):
     except Exception:
         return None
 
+@st.cache_data(ttl=300, show_spinner=False)
 def rm_price_lookup(product: str, particular: str = "") -> float:
     """Find RM price by product/yarn name from merged Supabase RM tables."""
     d = rm_price_lookup_detail(product, particular)
