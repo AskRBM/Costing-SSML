@@ -17,7 +17,7 @@ DATA_DIR = BASE_DIR / "data"
 GROUP_CSV = DATA_DIR / "group_costing.csv"
 RM_CSV = DATA_DIR / "rm_price_master.csv"
 USERS_CSV = DATA_DIR / "users_default.csv"
-APP_VERSION = "2026-06-24-online-composition-related-sort-only-v25"
+APP_VERSION = "2026-06-26-production-speed-v2"
 
 # Online app now reads live synced data from Supabase first.
 # IMPORTANT: Put these same values in Streamlit Cloud Secrets also.
@@ -307,6 +307,7 @@ def load_specs() -> pd.DataFrame:
 
 def save_group(df: pd.DataFrame):
     st.session_state.group_df = df.copy()
+    _clear_perf_cache_v2()
 
 def _standardize_rm_df(df: pd.DataFrame, source_name: str = "") -> pd.DataFrame:
     """Make all RM price sources look same: particulars, product, price, change_date, price_numeric."""
@@ -391,6 +392,7 @@ def load_rm() -> pd.DataFrame:
 def save_rm(df: pd.DataFrame):
     st.session_state.rm_df = df.copy()
     st.session_state.pop("_rm_df_live_cached", None)
+    st.session_state.pop("_rm_price_index_v2", None)
 
 def load_users() -> pd.DataFrame:
     # Live synced users from offline app. Falls back to GitHub users_default.csv.
@@ -468,7 +470,7 @@ def fetch_live_supabase_now():
     except Exception:
         pass
     for k in list(st.session_state.keys()):
-        if str(k).startswith("sb_") or str(k) in ("group_df", "rm_df", "users_df", "_rm_df_live_cached", "_composition_cache", "freight_master_df"):
+        if str(k).startswith("sb_") or str(k).startswith("_sort_row_cache_v2") or str(k) in ("group_df", "rm_df", "users_df", "_rm_df_live_cached", "_composition_cache", "freight_master_df", "_group_sort_index_v2", "_specs_sort_index_v2", "_rm_price_index_v2"):
             st.session_state.pop(k, None)
     # Touch tables so status immediately appears after button click.
     _ = supabase_table_df("specs")
@@ -547,26 +549,49 @@ def sort_key_value(x: str):
     except Exception:
         return (1, sx)
 
-def sort_options()->List[str]:
-    # Force live Supabase SPECS first. This is required because new Sort No
-    # added in Offline app is synced to Supabase specs table, not to GitHub CSV.
-    vals=[]
-    seen=set()
-    for df in [load_specs(), load_group()]:
-        if df.empty:
-            continue
-        possible=["dev_sorts","sort_no","sort","dev_sort","sorts","sr_no"]
-        found_cols=[x for x in possible if x in df.columns and x != "sr_no"]
-        if not found_cols:
-            found_cols=[group_sort_col(df)]
+def _build_sort_index_from_df(df: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
+    """Build fast Sort No -> row dictionary once per session.
+    This avoids scanning all rows every time user changes Sort No.
+    """
+    idx: Dict[str, Dict[str, Any]] = {}
+    if df is None or df.empty:
+        return idx
+    possible = ["dev_sorts", "sort_no", "sort", "dev_sort", "sorts"]
+    found_cols = [x for x in possible if x in df.columns]
+    if not found_cols:
+        found_cols = [group_sort_col(df)]
+    for _, row in df.iterrows():
+        d = row.to_dict()
         for c in found_cols:
             if c not in df.columns:
                 continue
-            for raw_v in df[c].tolist():
-                v=clean_sort_value(raw_v)
-                if v and v not in seen:
-                    seen.add(v); vals.append(v)
-    return sorted(vals, key=sort_key_value)
+            key = clean_sort_value(d.get(c, ""))
+            if key and key not in idx:
+                idx[key] = d
+    return idx
+
+def _group_sort_index_v2() -> Dict[str, Dict[str, Any]]:
+    if "_group_sort_index_v2" not in st.session_state:
+        st.session_state["_group_sort_index_v2"] = _build_sort_index_from_df(load_group())
+    return st.session_state["_group_sort_index_v2"]
+
+def _specs_sort_index_v2() -> Dict[str, Dict[str, Any]]:
+    if "_specs_sort_index_v2" not in st.session_state:
+        st.session_state["_specs_sort_index_v2"] = _build_sort_index_from_df(load_specs())
+    return st.session_state["_specs_sort_index_v2"]
+
+def _clear_perf_cache_v2():
+    for k in list(st.session_state.keys()):
+        sk = str(k)
+        if sk.startswith("_sort_row_cache_v2") or sk in ("_group_sort_index_v2", "_specs_sort_index_v2", "_rm_price_index_v2"):
+            st.session_state.pop(k, None)
+
+def sort_options()->List[str]:
+    # Fast dropdown: use one-time Sort No indexes instead of scanning full dataframes on every rerun.
+    vals = set()
+    vals.update(_specs_sort_index_v2().keys())
+    vals.update(_group_sort_index_v2().keys())
+    return sorted([v for v in vals if v], key=sort_key_value)
 
 DEFAULT_FREIGHT_MASTER = {
     "Bangladesh": 15.0,
@@ -985,49 +1010,62 @@ def spec_col_to_product(col: str) -> str:
 def _clean_rm_text(v: Any) -> str:
     return " ".join(str(v or "").strip().upper().replace("-", " ").replace("_", " ").split())
 
+def _rm_price_index_v2():
+    """Build fast RM lookup dictionaries once per session.
+    Exact lookup becomes O(1), so repeated Cost Sheet calculations are faster.
+    """
+    if "_rm_price_index_v2" in st.session_state:
+        return st.session_state["_rm_price_index_v2"]
+    df = load_rm()
+    exact = {}
+    product_only = {}
+    alnum = {}
+    loose = []
+    if df is not None and not df.empty and "product" in df.columns:
+        price_col = "price_numeric" if "price_numeric" in df.columns else ("price" if "price" in df.columns else "")
+        if price_col:
+            for _, rr in df.iterrows():
+                prod = _clean_rm_text(rr.get("product", ""))
+                part = _clean_rm_text(rr.get("particulars", ""))
+                if not prod:
+                    continue
+                detail = (to_float(rr.get(price_col), 0), str(rr.get("particulars", "")), str(rr.get("product", "")))
+                exact[(prod, part)] = detail
+                product_only[prod] = detail
+                pa = ''.join(ch for ch in prod if ch.isalnum())
+                if pa:
+                    alnum[pa] = detail
+                loose.append((prod, detail))
+    out = {"exact": exact, "product": product_only, "alnum": alnum, "loose": loose}
+    st.session_state["_rm_price_index_v2"] = out
+    return out
+
 @st.cache_data(ttl=300, show_spinner=False)
 def rm_price_lookup_detail(product: str, particular: str = ""):
-    """Return (price, particulars, product) from merged live RM tables.
-    Exact product+particular first, then product-only, then loose normalized match.
+    """Fast RM price lookup using session dictionary.
+    Exact product+particular first, then product-only, then alphanumeric/loose match.
     """
     try:
-        df = load_rm()
-        if df.empty:
-            return None
         prod_norm = _clean_rm_text(product)
         part_norm = _clean_rm_text(particular)
         if not prod_norm:
             return None
-        price_col = "price_numeric" if "price_numeric" in df.columns else ("price" if "price" in df.columns else "")
-        if not price_col or "product" not in df.columns:
-            return None
-        x = df.copy()
-        x["_prod"] = x["product"].map(_clean_rm_text)
-        x["_part"] = x.get("particulars", pd.Series([""]*len(x))).map(_clean_rm_text)
-        m = x[x["_prod"] == prod_norm]
-        if part_norm and not m.empty:
-            m2 = m[m["_part"] == part_norm]
-            if not m2.empty:
-                rr = m2.iloc[-1]
-                return (to_float(rr.get(price_col), 0), str(rr.get("particulars", "")), str(rr.get("product", "")))
-        if not m.empty:
-            rr = m.iloc[-1]
-            return (to_float(rr.get(price_col), 0), str(rr.get("particulars", "")), str(rr.get("product", "")))
-        # loose matching: handles PKS/SPS and spacing differences
-        m = x[x["_prod"].apply(lambda p: p == prod_norm or prod_norm in p or p in prod_norm)]
-        if not m.empty:
-            rr = m.iloc[-1]
-            return (to_float(rr.get(price_col), 0), str(rr.get("particulars", "")), str(rr.get("product", "")))
-        # very loose alphanumeric match: 24S KCW == 24S_KCW, SPS == sps, PKS == pks
+        ix = _rm_price_index_v2()
+        if part_norm and (prod_norm, part_norm) in ix["exact"]:
+            return ix["exact"][(prod_norm, part_norm)]
+        if prod_norm in ix["product"]:
+            return ix["product"][prod_norm]
         prod_alnum = ''.join(ch for ch in prod_norm if ch.isalnum())
-        if prod_alnum:
-            m = x[x["_prod"].apply(lambda p: ''.join(ch for ch in str(p).upper() if ch.isalnum()) == prod_alnum)]
-            if not m.empty:
-                rr = m.iloc[-1]
-                return (to_float(rr.get(price_col), 0), str(rr.get("particulars", "")), str(rr.get("product", "")))
+        if prod_alnum and prod_alnum in ix["alnum"]:
+            return ix["alnum"][prod_alnum]
+        # final fallback for spacing/partial matches; this loop is over RM items only, not over costing rows
+        for p, detail in ix["loose"]:
+            if p == prod_norm or prod_norm in p or p in prod_norm:
+                return detail
         return None
     except Exception:
         return None
+
 
 @st.cache_data(ttl=300, show_spinner=False)
 def rm_price_lookup(product: str, particular: str = "") -> float:
@@ -1092,35 +1130,42 @@ def specs_cost_row_from_specs(spec_row: Dict[str, Any], sort_no: str) -> Dict[st
 
 
 def get_sort_row(sort_no:str)->Dict[str,Any]:
-    target=clean_sort_value(sort_no)
+    """Fast Sort No lookup.
+    V2 speed fix: no dataframe scan on every selection.
+    The selected Sort No is read from a session dictionary; computed SPECS-only rows are cached.
+    """
+    target = clean_sort_value(sort_no)
+    if not target:
+        return {}
+    cache_key = f"_sort_row_cache_v2::{target}"
+    if cache_key in st.session_state:
+        try:
+            return dict(st.session_state[cache_key])
+        except Exception:
+            pass
+
     # For offline-added/bulk-upload sorts, always calculate from live SPECS first
     # so PKS/SPS and green-cell formula logic are applied online.
     if target in ONLINE_EXTRA_SORT_YARN_ITEMS:
-        sdf_first = load_specs()
-        if not sdf_first.empty:
-            c_first = next((x for x in ["dev_sorts","sort_no","sort"] if x in sdf_first.columns), group_sort_col(sdf_first))
-            if c_first in sdf_first.columns:
-                m_first = sdf_first[sdf_first[c_first].apply(clean_sort_value)==target]
-                if not m_first.empty:
-                    return specs_cost_row_from_specs(m_first.iloc[0].to_dict(), target)
-    df=load_group()
-    if not df.empty:
-        c=group_sort_col(df)
-        if c in df.columns:
-            m=df[df[c].apply(clean_sort_value)==target]
-            if not m.empty:
-                return m.iloc[0].to_dict()
+        spec_r = _specs_sort_index_v2().get(target)
+        if spec_r:
+            out = specs_cost_row_from_specs(spec_r, target)
+            st.session_state[cache_key] = dict(out)
+            return out
+
+    group_r = _group_sort_index_v2().get(target)
+    if group_r:
+        out = dict(group_r)
+        st.session_state[cache_key] = dict(out)
+        return out
+
     # Fallback: if the sort exists only in SPECS, still show it in online dropdown/pages.
-    sdf=load_specs()
-    if not sdf.empty:
-        c=next((x for x in ["dev_sorts","sort_no","sort"] if x in sdf.columns), group_sort_col(sdf))
-        if c in sdf.columns:
-            m=sdf[sdf[c].apply(clean_sort_value)==target]
-        else:
-            m=pd.DataFrame()
-        if not m.empty:
-            r=m.iloc[0].to_dict()
-            return specs_cost_row_from_specs(r, target)
+    spec_r = _specs_sort_index_v2().get(target)
+    if spec_r:
+        out = specs_cost_row_from_specs(spec_r, target)
+        st.session_state[cache_key] = dict(out)
+        return out
+
     return {}
 
 # ---------- role/session ----------
