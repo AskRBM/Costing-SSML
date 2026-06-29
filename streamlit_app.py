@@ -17,7 +17,7 @@ DATA_DIR = BASE_DIR / "data"
 GROUP_CSV = DATA_DIR / "group_costing.csv"
 RM_CSV = DATA_DIR / "rm_price_master.csv"
 USERS_CSV = DATA_DIR / "users_default.csv"
-APP_VERSION = "2026-06-29-online-v5-shade-tick-local-export"
+APP_VERSION = "2026-06-29-online-v6-specs-edit-shade"
 
 # Online app now reads live synced data from Supabase first.
 # IMPORTANT: Put these same values in Streamlit Cloud Secrets also.
@@ -68,12 +68,13 @@ ONLINE_SUPABASE_SERVICE_KEY = _secret_or_env(
     default=""
 ).strip()
 
-MODULES = ["Cost Sheet", "Cost - Local", "Cost - Export", "Add Sort", "RM Price", "Users"]
+MODULES = ["Cost Sheet", "Cost - Local", "Cost - Export", "Add Sort", "SPECS", "RM Price", "Users"]
 PERM = {
     "Cost Sheet":"can_cost_sheet",
     "Cost - Local":"can_cost_local",
     "Cost - Export":"can_cost_export",
     "Add Sort":"can_add_sort",
+    "SPECS":"can_add_sort",
     "RM Price":"can_rm_price",
     "Users":"can_users",
 }
@@ -1261,7 +1262,7 @@ def has_perm(module:str)->bool:
     if not st.session_state.logged_in: return False
     role=str(st.session_state.role)
     if role=="Developer": return True
-    if role=="Admin" and module in ["Cost Sheet","Cost - Local","Cost - Export","Add Sort","RM Price","Users"]: return True
+    if role=="Admin" and module in ["Cost Sheet","Cost - Local","Cost - Export","Add Sort","SPECS","RM Price","Users"]: return True
     r=current_user_row()
     key=PERM.get(module, "")
     return str(r.get(key,"False")).lower() in ("true","1","yes")
@@ -1937,9 +1938,79 @@ def simple_cost_page(kind:str):
         st.markdown(rows_report_html(f"{kind} Print Preview", sort, export_rows), unsafe_allow_html=True)
     st.markdown(html_table(kind, rows), unsafe_allow_html=True)
 
+def _safe_set_value(df: pd.DataFrame, row_index: int, possible_cols: list, value: Any):
+    for col in possible_cols:
+        if col in df.columns:
+            df.loc[row_index, col] = value
+            return
+    # if none exists, create first column name
+    if possible_cols:
+        df[possible_cols[0]] = ""
+        df.loc[row_index, possible_cols[0]] = value
+
+def _specs_edit_form(page_key: str = "specs"):
+    specs_df = load_specs()
+    if specs_df.empty:
+        specs_df = load_group()
+    if specs_df.empty:
+        st.warning("No SPECS data found.")
+        return
+    sort_col = next((c for c in ["dev_sorts", "sort_no", "sort", "dev_sort", "sorts"] if c in specs_df.columns), group_sort_col(specs_df))
+    specs_df = specs_df.copy().fillna("")
+    specs_df["_clean_sort"] = specs_df[sort_col].map(clean_sort_value)
+    sorts = sorted([x for x in specs_df["_clean_sort"].tolist() if x], key=sort_key_value)
+    st.caption(f"SPECS rows loaded: {len(specs_df)} | Sort Nos available: {len(sorts)}")
+    with st.form(f"{page_key}_edit_form"):
+        c0,c1,c2,c3,c4,c5 = st.columns([1.2,1.2,1.2,1.2,1.2,1.1], gap="small")
+        choice = c0.selectbox("Edit Sort No", sorts, key=f"{page_key}_edit_sort") if sorts else ""
+        m = specs_df[specs_df["_clean_sort"] == choice]
+        old = m.iloc[0].to_dict() if not m.empty else {}
+        row_index = int(m.index[0]) if not m.empty else None
+        structure = c1.text_input("Structure", value=str(getv(old, "structure")), key=f"{page_key}_structure")
+        shade = c2.text_input("Shade Name", value=get_shade_value(old), key=f"{page_key}_shade")
+        gsm = c3.number_input("Finish GSM", value=to_float(getv(old,"finish_gsm","gsm"),0), step=1.0, format="%.2f", key=f"{page_key}_gsm")
+        width = c4.number_input("Finish Width", value=to_float(getv(old,"finish_width","finish_widt","width","width_cms"),0), step=1.0, format="%.2f", key=f"{page_key}_width")
+        tick = c5.selectbox("Tick Option", ["", "✓", "✓✓"], index=["", "✓", "✓✓"].index(get_tick_display(old)) if get_tick_display(old) in ["", "✓", "✓✓"] else 0, key=f"{page_key}_tick")
+        save = st.form_submit_button("Update / Save Existing Sort", type="primary")
+        if save and row_index is not None:
+            _safe_set_value(specs_df, row_index, ["structure"], structure)
+            _safe_set_value(specs_df, row_index, ["shade", "shade_name"], shade)
+            _safe_set_value(specs_df, row_index, ["finish_gsm", "gsm", "weight_gsm"], gsm)
+            _safe_set_value(specs_df, row_index, ["finish_width", "finish_widt", "width", "width_cms"], width)
+            _safe_set_value(specs_df, row_index, ["dye_tick_status", "tick_option", "tick"], tick)
+            specs_df = specs_df.drop(columns=["_clean_sort"], errors="ignore")
+            st.session_state.group_df = specs_df.copy()
+            _clear_perf_cache_v2()
+            st.success("Existing Sort updated in online session. Sync/Supabase permanent save can be added after final testing.")
+
+def specs_page():
+    header("Costing")
+    st.markdown('<div class="sheet-head"><span>SPECS</span></div>', unsafe_allow_html=True)
+    _specs_edit_form("specs_module")
+    st.markdown("---")
+    st.markdown("<b>Upload New SPECS Sheet</b>", unsafe_allow_html=True)
+    up_specs = st.file_uploader("Upload SPECS CSV/XLSX", type=["csv","xlsx","xls"], key="upload_specs_module_v6")
+    if up_specs is not None and st.button("Load SPECS Upload", key="load_specs_module_v6"):
+        try:
+            x = pd.read_csv(up_specs, dtype=str).fillna("") if up_specs.name.lower().endswith(".csv") else pd.read_excel(up_specs, dtype=str).fillna("")
+            x.columns=[norm_col(c) for c in x.columns]
+            st.session_state.group_df = x.copy()
+            _clear_perf_cache_v2()
+            st.success(f"SPECS uploaded in online session: {len(x)} rows.")
+        except Exception as e:
+            st.error(f"SPECS upload failed: {e}")
+    df = load_specs()
+    if df.empty:
+        df = load_group()
+    st.dataframe(df, use_container_width=True, height=430)
+
 def add_sort_page():
     header("Costing")
-    st.markdown('<div class="sheet-head"><span>Add Sort</span></div>', unsafe_allow_html=True)
+    st.markdown('<div class="sheet-head"><span>Add Sort / Edit Sort / Upload SPECS</span></div>', unsafe_allow_html=True)
+    st.info("For existing 592 sorts, use the Edit Sort No dropdown below. Shade Name is pulled from SPECS Shade header.")
+    _specs_edit_form("add_sort_existing")
+    st.markdown("---")
+    st.markdown("<b>Add New Sort</b>", unsafe_allow_html=True)
     with st.form("add_sort_form"):
         c1,c2,c3=st.columns(3, gap="small")
         sort=c1.text_input("Sort No")
@@ -1956,22 +2027,24 @@ def add_sort_page():
             else:
                 df=load_group(); c=group_sort_col(df) if not df.empty else 'dev_sorts'
                 new={col:"" for col in df.columns}
+                if not new:
+                    new={"dev_sorts":"","structure":"","shade":"","finish_gsm":"","finish_width":""}
+                    c="dev_sorts"
                 if c in new: new[c]=sort.strip()
                 for col,val in [('structure',structure),('shade_name',shade),('shade',shade),('dye_tick_status',dye_tick),('finish_gsm',gsm),('finish_width',width),('selling_price',sales),('price_per_kg_inr',local)]:
                     if col in new: new[col]=val
                 df=pd.concat([df,pd.DataFrame([new])], ignore_index=True)
                 save_group(df); st.success("Sort saved in current app session.")
-
     st.markdown("---")
     st.markdown("<b>Upload New SPECS Sheet</b>", unsafe_allow_html=True)
-    up_specs = st.file_uploader("Upload SPECS CSV/XLSX", type=["csv","xlsx","xls"], key="upload_specs_online_v5")
-    if up_specs is not None and st.button("Load SPECS Upload", key="load_specs_upload_v5"):
+    up_specs = st.file_uploader("Upload SPECS CSV/XLSX", type=["csv","xlsx","xls"], key="upload_specs_online_v6")
+    if up_specs is not None and st.button("Load SPECS Upload", key="load_specs_upload_v6"):
         try:
             x = pd.read_csv(up_specs, dtype=str).fillna("") if up_specs.name.lower().endswith(".csv") else pd.read_excel(up_specs, dtype=str).fillna("")
             x.columns=[norm_col(c) for c in x.columns]
             st.session_state.group_df = x.copy()
             _clear_perf_cache_v2()
-            st.success(f"SPECS uploaded in online session: {len(x)} rows. Use offline sync/Supabase final save for permanent update.")
+            st.success(f"SPECS uploaded in online session: {len(x)} rows.")
         except Exception as e:
             st.error(f"SPECS upload failed: {e}")
 
@@ -2066,7 +2139,7 @@ def users_page():
         default_role = str(edit_row.get('role', 'User' if edit_choice != "Create New User" else 'Admin'))
         role_index = role_options.index(default_role) if default_role in role_options else 0
         role=c3.selectbox("Role", role_options, index=role_index)
-        pcols=st.columns(7, gap="small")
+        pcols=st.columns(len(MODULES), gap="small")
         vals={}
         for i,(m,k) in enumerate([(m,PERM[m]) for m in MODULES]):
             saved_val = str(edit_row.get(k, "False")).lower() in ("true","1","yes") if edit_row else (role in ["Admin","Developer"])
@@ -2107,6 +2180,7 @@ if module=="Cost Sheet": cost_sheet_page()
 elif module=="Cost - Local": simple_cost_page("Cost - Local")
 elif module=="Cost - Export": simple_cost_page("Cost - Export")
 elif module=="Add Sort": add_sort_page()
+elif module=="SPECS": specs_page()
 elif module=="RM Price": rm_price_page()
 elif module=="Users": users_page()
 else: cost_sheet_page()
