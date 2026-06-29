@@ -289,6 +289,86 @@ def read_csv(path_str: str) -> pd.DataFrame:
             return df
     return pd.DataFrame()
 
+
+def make_unique_cols(cols: List[str]) -> List[str]:
+    seen = {}
+    out = []
+    for c in cols:
+        c = norm_col(c) or "col"
+        if c in seen:
+            seen[c] += 1
+            out.append(f"{c}_{seen[c]}")
+        else:
+            seen[c] = 0
+            out.append(c)
+    return out
+
+def read_offline_specs_upload(uploaded_file) -> pd.DataFrame:
+    """Read offline SPECS workbook/CSV exactly like the Excel source.
+    Supports RBM_Costing_Source.xlsm / xlsx / xls where sheet name is SPECS and:
+    row1=thread type, row2=number, row3=quality, row4=mill/name, row5 onward=data.
+    """
+    name = str(getattr(uploaded_file, "name", "")).lower()
+    if name.endswith(".csv"):
+        df = pd.read_csv(uploaded_file, dtype=str).fillna("")
+        df.columns = make_unique_cols([str(c) for c in df.columns])
+        return df
+    # Read SPECS sheet without header so rows 1-4 can be interpreted.
+    try:
+        raw = pd.read_excel(uploaded_file, sheet_name="SPECS", header=None, dtype=object, engine="openpyxl")
+    except Exception:
+        raw = pd.read_excel(uploaded_file, header=None, dtype=object, engine="openpyxl")
+    raw = raw.fillna("")
+    if raw.shape[0] < 5:
+        return pd.DataFrame()
+    r1 = list(raw.iloc[0].astype(str))
+    r3 = list(raw.iloc[2].astype(str)) if raw.shape[0] > 2 else [""] * raw.shape[1]
+    r4 = list(raw.iloc[3].astype(str)) if raw.shape[0] > 3 else [""] * raw.shape[1]
+    cols=[]
+    for i in range(raw.shape[1]):
+        if i == 0: cols.append("sr_no"); continue
+        if i == 1: cols.append("dev_sorts"); continue
+        if i == 2: cols.append("structure"); continue
+        if i == 3: cols.append("finish_gsm"); continue
+        if i == 4: cols.append("finish_width"); continue
+        parts = [r1[i].strip(), r3[i].strip(), r4[i].strip()]
+        parts = [x for x in parts if x and x.lower() not in ("none", "nan")]
+        label = " ".join(parts) if parts else f"col_{i+1}"
+        # Important business fields near the end must be clean.
+        nl = label.lower()
+        if "shade" in nl:
+            label = "shade"
+        elif "composition" in nl:
+            label = "composition"
+        elif "local cost" in nl:
+            label = "local_cost"
+        elif "sales price" in nl:
+            label = "sales_price"
+        elif "export cost" in nl:
+            label = "export_cost"
+        elif "export price" in nl:
+            label = "export_price"
+        elif "check" in nl:
+            label = "check"
+        cols.append(label)
+    df = raw.iloc[4:].copy()
+    df.columns = make_unique_cols(cols)
+    # Keep only real sorts.
+    if "dev_sorts" in df.columns:
+        df["dev_sorts"] = df["dev_sorts"].map(clean_sort_value)
+        df = df[df["dev_sorts"].astype(str).str.strip() != ""]
+    df = df.fillna("").reset_index(drop=True)
+    # Recreate sr_no 1..n for the real rows.
+    df["sr_no"] = range(1, len(df) + 1)
+    return df
+
+def save_specs_session(df: pd.DataFrame):
+    x = df.copy().fillna("")
+    x.columns = make_unique_cols([str(c) for c in x.columns])
+    st.session_state["specs_df"] = x.copy()
+    st.session_state["group_df"] = x.copy()
+    _clear_perf_cache_v2()
+
 def load_group() -> pd.DataFrame:
     # Live data priority: Supabase sync table, then GitHub CSV fallback.
     df_live = supabase_table_df("group_costing")
@@ -300,11 +380,24 @@ def load_group() -> pd.DataFrame:
 
 def load_specs() -> pd.DataFrame:
     # SPECS is important because newly added sort numbers may exist here before group_costing.
+    # Uploaded/offline-source SPECS in current online session has first priority.
+    if "specs_df" in st.session_state:
+        try:
+            x = st.session_state["specs_df"].copy().fillna("")
+            if not x.empty:
+                return x
+        except Exception:
+            pass
     df_live = supabase_table_df("specs")
     if not df_live.empty:
         return df_live.copy()
-    p = DATA_DIR / "specs.csv"
-    return read_csv(str(p))
+    # Offline workbook extracted fallback.
+    for fname in ["specs_from_workbook.csv", "specs.csv"]:
+        p = DATA_DIR / fname
+        x = read_csv(str(p))
+        if not x.empty:
+            return x
+    return pd.DataFrame()
 
 def save_group(df: pd.DataFrame):
     st.session_state.group_df = df.copy()
@@ -1992,11 +2085,9 @@ def specs_page():
     up_specs = st.file_uploader("Upload SPECS CSV/XLSX", type=["csv","xlsx","xls"], key="upload_specs_module_v6")
     if up_specs is not None and st.button("Load SPECS Upload", key="load_specs_module_v6"):
         try:
-            x = pd.read_csv(up_specs, dtype=str).fillna("") if up_specs.name.lower().endswith(".csv") else pd.read_excel(up_specs, dtype=str).fillna("")
-            x.columns=[norm_col(c) for c in x.columns]
-            st.session_state.group_df = x.copy()
-            _clear_perf_cache_v2()
-            st.success(f"SPECS uploaded in online session: {len(x)} rows.")
+            x = read_offline_specs_upload(up_specs)
+            save_specs_session(x)
+            st.success(f"SPECS uploaded in online session from offline format: {len(x)} rows.")
         except Exception as e:
             st.error(f"SPECS upload failed: {e}")
     df = load_specs()
@@ -2040,11 +2131,9 @@ def add_sort_page():
     up_specs = st.file_uploader("Upload SPECS CSV/XLSX", type=["csv","xlsx","xls"], key="upload_specs_online_v6")
     if up_specs is not None and st.button("Load SPECS Upload", key="load_specs_upload_v6"):
         try:
-            x = pd.read_csv(up_specs, dtype=str).fillna("") if up_specs.name.lower().endswith(".csv") else pd.read_excel(up_specs, dtype=str).fillna("")
-            x.columns=[norm_col(c) for c in x.columns]
-            st.session_state.group_df = x.copy()
-            _clear_perf_cache_v2()
-            st.success(f"SPECS uploaded in online session: {len(x)} rows.")
+            x = read_offline_specs_upload(up_specs)
+            save_specs_session(x)
+            st.success(f"SPECS uploaded in online session from offline format: {len(x)} rows.")
         except Exception as e:
             st.error(f"SPECS upload failed: {e}")
 
