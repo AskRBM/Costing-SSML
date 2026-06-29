@@ -17,7 +17,7 @@ DATA_DIR = BASE_DIR / "data"
 GROUP_CSV = DATA_DIR / "group_costing.csv"
 RM_CSV = DATA_DIR / "rm_price_master.csv"
 USERS_CSV = DATA_DIR / "users_default.csv"
-APP_VERSION = "2026-06-29-online-costing-client-filter-v3"
+APP_VERSION = "2026-06-29-online-v5-shade-tick-local-export"
 
 # Online app now reads live synced data from Supabase first.
 # IMPORTANT: Put these same values in Streamlit Cloud Secrets also.
@@ -594,180 +594,66 @@ def sort_options()->List[str]:
     return sorted([v for v in vals if v], key=sort_key_value)
 
 
-def _find_first_existing_col(df: pd.DataFrame, candidates: List[str]) -> str:
-    if df is None or df.empty:
-        return ""
-    cols = {norm_col(c): c for c in df.columns}
-    for c in candidates:
-        nc = norm_col(c)
-        if nc in cols:
-            return cols[nc]
-    return ""
-
-def get_shade_from_row(row: Dict[str, Any]) -> str:
-    return str(getv(row, "shade_name", "shade", "shade_no", "colour", "color", "shade_colour", default="")).strip()
-
-def shade_options() -> List[str]:
-    vals=set()
-    try:
-        for idx in (_specs_sort_index_v2(), _group_sort_index_v2()):
-            for r in idx.values():
-                sh=get_shade_from_row(r)
-                if sh:
-                    vals.add(sh)
-    except Exception:
-        pass
-    return sorted(vals, key=lambda x: str(x).lower())
-
-def sort_options_by_shade(selected_shade: str = "") -> List[str]:
-    selected_shade = str(selected_shade or "").strip()
-    if not selected_shade:
-        return sort_options()
-    vals=set()
-    for idx in (_specs_sort_index_v2(), _group_sort_index_v2()):
-        for sort_no, r in idx.items():
-            if get_shade_from_row(r).strip().lower() == selected_shade.lower():
-                vals.add(clean_sort_value(sort_no))
-    return sorted([v for v in vals if v], key=sort_key_value)
-
-def dye_tick_from_row(row: Dict[str, Any]) -> str:
-    """Client-safe dye status. Do not show Single Dyed / Double Dyed text."""
+def _find_col_in_row(row: Dict[str, Any], *names: str) -> str:
+    """Find a column in a mixed CSV/Supabase row by normalized names."""
     if not isinstance(row, dict):
         return ""
-    val = str(getv(row, "dye_tick", "dyed_tick", "dye_status", "dye_type", "single_double_tick", "single_double", default="")).strip().lower()
-    if val in ("double", "double dyed", "double_dyed", "2", "two", "yesyes", "✓✓", "✔✔"):
+    wanted = {norm_col(x) for x in names}
+    for k in row.keys():
+        nk = norm_col(k)
+        if nk in wanted:
+            return k
+    for k in row.keys():
+        nk = norm_col(k)
+        if any(w in nk for w in wanted if w):
+            return k
+    return ""
+
+def get_shade_value(row: Dict[str, Any]) -> str:
+    """Shade Name is pulled from SPECS/group data when the header exists."""
+    c = _find_col_in_row(row, "shade", "shade_name", "shade name", "colour", "color")
+    return str(row.get(c, "")).strip() if c else ""
+
+def shade_options() -> List[str]:
+    vals = set()
+    # Prefer SPECS because Shade header exists there.
+    for idx in (_specs_sort_index_v2(), _group_sort_index_v2()):
+        for r in idx.values():
+            v = get_shade_value(r)
+            if v:
+                vals.add(v)
+    return ["All"] + sorted(vals, key=lambda x: x.upper())
+
+def sort_options_by_shade(shade: str) -> List[str]:
+    all_sorts = sort_options()
+    if not shade or shade == "All":
+        return all_sorts
+    out=[]
+    for sn in all_sorts:
+        r = _specs_sort_index_v2().get(sn) or _group_sort_index_v2().get(sn) or get_sort_row(sn)
+        if get_shade_value(r).strip().lower() == str(shade).strip().lower():
+            out.append(sn)
+    return out or all_sorts
+
+def get_tick_display(row: Dict[str, Any]) -> str:
+    """Client-facing dye status. Never show Single Dyed/Double Dyed text, only ticks."""
+    c = _find_col_in_row(row, "dye_tick", "dye_tick_status", "single_double_tick", "dyed_tick", "single_tick_double_tick", "dye_status")
+    v = str(row.get(c, "")).strip().lower() if c else ""
+    if v in ("✓✓", "double", "double tick", "double_tick", "double dyed", "2", "yes yes"):
         return "✓✓"
-    if val in ("single", "single dyed", "single_dyed", "1", "one", "yes", "true", "✓", "✔"):
-        return "✓"
-    if str(getv(row, "double_tick", "is_double_dyed", default="")).strip().lower() in ("1","true","yes","y","✓","✔"):
-        return "✓✓"
-    if str(getv(row, "single_tick", "is_single_dyed", default="")).strip().lower() in ("1","true","yes","y","✓","✔"):
+    if v in ("✓", "single", "single tick", "single_tick", "single dyed", "1", "yes", "true"):
         return "✓"
     return ""
 
-def composition_text_from_specs(spec_row: Dict[str, Any], sort_no: str = "") -> str:
-    try:
-        rows = composition_rows_from_specs(spec_row, sort_no or clean_sort_value(getv(spec_row, "dev_sorts", "sort_no", "sort")))
-        totals=[]
-        for particular, yarn, price, pct, calc, spec_col in rows:
-            if "TOTAL COMPOSITION" in str(particular).upper():
-                totals.append(f"{yarn} {fmt(pct)}%")
-        return " / ".join(totals)
-    except Exception:
-        return ""
-
-def online_width_inch(row: Dict[str, Any]) -> float:
-    w_in = to_float(getv(row, "width_inch"), 0)
-    if w_in:
-        return w_in
-    w = to_float(getv(row, "finish_width", "finish_widt", "width_cms", "width"), 0)
-    return w / 2.54 if w else 0
-
-GLOBAL_FIX_FIELDS = [
-    "Waste %","Dyeing Cost Rs.","Knit Waste %","Discount %","Currency Rate",
-    "Freight INR/KG","Commission %","LC Days / Interest","Margin %","Yarn Name"
-]
-FIX_FIELD_TO_KEY = {
-    "Waste %":"wastage",
-    "Dyeing Cost Rs.":"dyeing_cost_rs",
-    "Knit Waste %":"wastage_after_knitting_pct",
-    "Discount %":"discount_if_any",
-    "Currency Rate":"currency_rate",
-    "Freight INR/KG":"freight_inr_per_kg",
-    "Commission %":"commission_pct",
-    "LC Days / Interest":"lc_days_interest",
-    "Margin %":"margin_pct",
-}
-
-def apply_global_fixed_wf(row: Dict[str, Any], sort: str) -> Dict[str, Any]:
-    """Apply all-sort fixed what-if values first, then selected-sort values."""
-    global_wf = st.session_state.get("fixed_wf_all_sorts", {})
-    sort_wf = st.session_state.get(f"fixed_wf_{sort}", {})
-    tmp_wf = st.session_state.get(f"wf_{sort}", {})
-    wf={}
-    if isinstance(global_wf, dict): wf.update(global_wf)
-    if isinstance(sort_wf, dict): wf.update(sort_wf)
-    if isinstance(tmp_wf, dict) and tmp_wf: wf.update(tmp_wf)
-    return apply_whatif(row, wf) if wf else row
-
-def _clean_records_for_supabase(df: pd.DataFrame, key_col: str = "") -> List[Dict[str, Any]]:
-    if df is None or df.empty:
-        return []
-    x=df.copy().fillna("")
-    x.columns=[norm_col(c) for c in x.columns]
-    out=[]
-    for i, r in x.iterrows():
-        d={}
-        for k,v in r.to_dict().items():
-            if isinstance(v, (pd.Timestamp, datetime)):
-                v=v.isoformat()
-            d[str(k)] = "" if pd.isna(v) else v
-        if key_col and key_col not in d:
-            d[key_col] = f"{key_col}_{i+1:06d}"
-        out.append(d)
-    return out
-
-def upload_specs_dataframe_to_supabase(df: pd.DataFrame) -> tuple[bool, str]:
-    if df is None or df.empty:
-        return False, "No SPECS data found"
-    x=df.copy().fillna("")
-    x.columns=[norm_col(c) for c in x.columns]
-    # Make sort key compatible with existing online specs table.
-    sort_col = _find_first_existing_col(x, ["dev_sorts","sort_no","sort","dev_sort","sorts"])
-    if not sort_col:
-        return False, "SPECS sheet must contain Sort No / Dev. Sorts column"
-    if "dev_sorts" not in x.columns:
-        x["dev_sorts"] = x[sort_col].map(clean_sort_value)
-    if "sort_no" not in x.columns:
-        x["sort_no"] = x["dev_sorts"].map(clean_sort_value)
-    if "sync_row_id" not in x.columns:
-        x["sync_row_id"] = x["dev_sorts"].map(lambda v: "specs_" + clean_sort_value(v))
-    # Drop duplicate sync ids before one batch upsert to avoid ON CONFLICT 21000.
-    x["sync_row_id"] = x["sync_row_id"].astype(str).str.strip()
-    x = x[x["sync_row_id"]!=""].drop_duplicates("sync_row_id", keep="last")
-    records = _clean_records_for_supabase(x)
-    ok, msg = supabase_post_records("specs", records, "sync_row_id")
-    if ok:
-        fetch_live_supabase_now()
-    return ok, msg
-
-def upload_new_price_dataframe_to_supabase(df: pd.DataFrame) -> tuple[bool, str]:
-    if df is None or df.empty:
-        return False, "No New Price data found"
-    x=df.copy().fillna("")
-    x.columns=[norm_col(c) for c in x.columns]
-    # Accept common headers from offline sheets.
-    if "particulars" not in x.columns:
-        for c in ["particular","category","item_group"]:
-            if c in x.columns:
-                x["particulars"]=x[c]; break
-    if "product" not in x.columns:
-        for c in ["yarn","product_yarn","item","quality"]:
-            if c in x.columns:
-                x["product"]=x[c]; break
-    if "price" not in x.columns:
-        for c in ["rate","new_price","price_numeric","amount"]:
-            if c in x.columns:
-                x["price"]=x[c]; break
-    for c in ["particulars","product","price"]:
-        if c not in x.columns:
-            return False, "New Price sheet must contain Particulars, Product/Yarn and Price columns"
-    x["price_numeric"]=x["price"].map(lambda v: to_float(v,0))
-    x["change_date"]=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    x=x[(x["product"].astype(str).str.strip()!="") & (x["price_numeric"]>0)]
-    records=x[["particulars","product","price","price_numeric","change_date"]].drop_duplicates(["particulars","product"], keep="last").to_dict(orient="records")
-    ok, msg = supabase_post_records("rm_price_master", records, "particulars,product")
-    if ok:
-        st.session_state.pop("_rm_df_live_cached", None)
-        st.session_state.pop("_rm_price_index_v2", None)
-    return ok, msg
-
-def read_uploaded_tabular(uploaded_file) -> pd.DataFrame:
-    name=str(getattr(uploaded_file, "name", "")).lower()
-    if name.endswith(".csv"):
-        return pd.read_csv(uploaded_file, dtype=str).fillna("")
-    return pd.read_excel(uploaded_file, dtype=str).fillna("")
-
+def composition_summary_text(row: Dict[str, Any], sort_no: str) -> str:
+    """Short composition string for Local/Export pages."""
+    pieces=[]
+    for particular, yarn, price, pct, calc, spec_col in composition_rows_from_specs(row, sort_no):
+        if "TOTAL COMPOSITION" in str(particular).upper():
+            pieces.append(f"{yarn} {fmt(pct)}%")
+    if pieces:
+        return ", ".join(pieces)
+    return str(getv(row, "composition", "fabric_composition", default=""))
 
 DEFAULT_FREIGHT_MASTER = {
     "Bangladesh": 15.0,
@@ -1691,8 +1577,9 @@ def composition_rows_from_specs(spec_row: Dict[str, Any], sort_no: str) -> List[
 
     # 2) Excel Set-sheet mapped rows. Show only rows where selected Sort No has %.
     for particular, yarn, default_price, set_idx in SET_YARN_ROWS:
-        # Client request: do not show % Black Poly row in online composition summary.
-        if str(particular).strip().upper() == "% BLACK POLY":
+        # Client asked to remove % Black Poly line from Yarn / Composition Summary only.
+        # Calculation remains unchanged in calculate_set_sheet_costs.
+        if set_category_key(particular) == "% BLACK POLY":
             continue
         pct = get_spec_pct_by_set_index(spec_row, set_idx, particular, yarn)
         if pct <= 0:
@@ -1805,7 +1692,12 @@ def dynamic_cost_rows_from_row(row: Dict[str, Any]) -> List[tuple]:
 # ---------- pages ----------
 def cost_sheet_page():
     header("Costing")
-    sorts=sort_options()
+    all_sorts=sort_options()
+    shades = shade_options()
+    selected_shade = st.session_state.get("shade_filter_cost_sheet", "All")
+    if selected_shade not in shades:
+        selected_shade = "All"
+    sorts=sort_options_by_shade(selected_shade)
     # Small live-sync status. This confirms online app is reading Supabase, not only GitHub CSV.
     specs_count = st.session_state.get("sb_count_specs", 0)
     specs_err = st.session_state.get("sb_error_specs", "")
@@ -1816,23 +1708,17 @@ def cost_sheet_page():
     if not sorts:
         st.error("No sort data found from Supabase or GitHub CSV.")
         return
-    shade_list = [""] + shade_options()
-    selected_shade = st.session_state.get("selected_shade_filter", "")
-    if selected_shade not in shade_list:
-        selected_shade = ""
-    filtered_sorts = sort_options_by_shade(selected_shade)
-    if not filtered_sorts:
-        filtered_sorts = sorts
-    selected=st.session_state.get("selected_sort", filtered_sorts[0])
-    if selected not in filtered_sorts: selected=filtered_sorts[0]
+    selected=st.session_state.get("selected_sort", sorts[0])
+    if selected not in sorts: selected=sorts[0]
 
-    # Top compact control line is outside form so changing Sort No/Shade updates values immediately.
-    cshade,c0,c1,c2,c3,c4,c5,c6,c7,c8,cfixsel,c9,c10,c11=st.columns([0.90,1.12,1.38,0.48,0.72,0.82,0.05,0.44,0.78,0.48,0.95,0.38,0.78,0.44], gap="small")
+    # Top compact control line is outside form so changing Sort No updates values immediately.
+    cshade,c0,c1,c2,c3,c4,c5,c6,c7,c8,c9,c10,c11=st.columns([0.78,1.12,1.38,0.48,0.72,0.82,0.05,0.44,0.78,0.48,0.66,0.78,0.44], gap="small")
     with cshade:
-        st.selectbox("Shade Name", shade_list, index=shade_list.index(selected_shade), key="selected_shade_filter")
+        selected_shade = st.selectbox("Shade Name", shades, index=shades.index(selected_shade), key="shade_filter_cost_sheet")
+        sorts = sort_options_by_shade(selected_shade)
     with c0: st.markdown('<div class="label">Sort No (Excel D1):</div>', unsafe_allow_html=True)
     with c1:
-        sort=st.selectbox("Sort No", filtered_sorts, index=filtered_sorts.index(selected), label_visibility="collapsed", key="selected_sort")
+        sort=st.selectbox("Sort No", sorts, index=sorts.index(selected) if selected in sorts else 0, label_visibility="collapsed", key="selected_sort")
     with c2:
         if st.button("Refresh", type="primary", key="top_refresh_btn"): st.rerun()
     print_placeholder = c3.empty()
@@ -1852,8 +1738,10 @@ def cost_sheet_page():
 
     wf_key=f"wf_{sort}"
     fixed_wf_key=f"fixed_wf_{sort}"
-    # Global Fix + selected-sort Fix + temporary Apply are combined here.
-    row = apply_global_fixed_wf(base, sort)
+    applied = st.session_state.get(wf_key)
+    fixed_applied = st.session_state.get(fixed_wf_key)
+    effective_wf = applied if applied else fixed_applied
+    row = apply_whatif(base, effective_wf) if effective_wf else base
 
     st.markdown('<div class="whatif-title">What-If Analysis</div>', unsafe_allow_html=True)
     cols=st.columns(9, gap="small")
@@ -1873,46 +1761,38 @@ def cost_sheet_page():
     vals={}
     for i,(k,label) in enumerate(keys):
         with cols[i]: vals[k]=st.number_input(label, value=float(defaults[k]), step=1.0 if k!='wastage' else 0.25, format="%.2f", key=f"num_{sort}_{k}")
-    # Offline-style Yarn Price What-If line. It shows only yarns used by selected Sort No.
-    try:
-        yrows = [r for r in composition_rows_from_specs(base, sort) if "TOTAL COMPOSITION" not in str(r[0]).upper()]
-        if yrows:
-            st.markdown('<div class="one-line-bar"><b>Yarn Price What-If:</b> ' + " ".join([f'{html.escape(str(y))} <input style="width:55px;background:#91f0a0;border:0;padding:2px 4px;font-weight:700;" value="{html.escape(fmt(price))}" readonly>' for _, y, price, _, _, _ in yrows[:5]]) + '</div>', unsafe_allow_html=True)
-    except Exception:
-        pass
     with c8:
         submitted=st.button("Apply", type="primary", key="top_apply_btn")
-    with cfixsel:
-        fix_scope = st.selectbox("Fix Field", [""] + GLOBAL_FIX_FIELDS, key=f"fix_scope_{sort}", label_visibility="collapsed")
+    fix_options=["", "Waste %", "Dyeing Cost Rs.", "Knit Waste %", "Discount %", "Currency Rate", "Freight INR/KG", "Commission %", "LC Days / Interest", "Margin %", "Yarn Name"]
     with c9:
-        fixed_clicked=st.button("Fix", key="top_fix_btn")
+        fix_choice=st.selectbox("Fix Field", fix_options, label_visibility="collapsed", key="fix_field_choice")
     with c10:
-        freight_clicked=st.button("Freight Master", key="top_freight_btn")
+        fixed_clicked=st.button("Fix", key="top_fix_btn")
     with c11:
         cleared=st.button("Clear", key="top_clear_btn")
+    freight_clicked=st.button("Freight Master", key="top_freight_btn")
     if submitted:
         # Apply is temporary for current browser/session only.
         st.session_state[wf_key]=vals
         st.rerun()
     if fixed_clicked:
-        # If a Fix Field is selected, fix that field for ALL Sort Nos.
-        # If blank, save all visible What-If changes only for selected Sort No.
-        if fix_scope:
-            if fix_scope == "Yarn Name":
-                st.warning("Yarn Name fixing works through RM Price Master / New Price upload. Please upload New Price or edit RM Price.")
-            else:
-                k = FIX_FIELD_TO_KEY.get(fix_scope, "")
-                if k:
-                    all_wf = st.session_state.get("fixed_wf_all_sorts", {})
-                    if not isinstance(all_wf, dict):
-                        all_wf = {}
-                    all_wf[k] = vals.get(k)
-                    st.session_state["fixed_wf_all_sorts"] = all_wf
-                    st.success(f"{fix_scope} fixed for all Sort Nos.")
-        else:
+        # If no Fix Field is selected, save current values only for selected Sort No.
+        # If a Fix Field is selected, fix that field value for all Sort Nos in current browser session.
+        if not fix_choice:
             st.session_state[fixed_wf_key]=vals
             st.session_state[wf_key]=vals
-            st.success(f"What-If fixed for selected Sort No {sort}. Other Sort Nos unchanged.")
+            st.success(f"What-If fixed for Sort No {sort}. Other Sort Nos unchanged.")
+        else:
+            label_to_key={"Waste %":"wastage", "Dyeing Cost Rs.":"dyeing_cost_rs", "Knit Waste %":"wastage_after_knitting_pct", "Discount %":"discount_if_any", "Currency Rate":"currency_rate", "Freight INR/KG":"freight_inr_per_kg", "Commission %":"commission_pct", "LC Days / Interest":"lc_days_interest", "Margin %":"margin_pct"}
+            k = label_to_key.get(fix_choice, "")
+            if k:
+                for sn in sort_options():
+                    old_fixed = st.session_state.get(f"fixed_wf_{sn}", {}).copy()
+                    old_fixed[k] = vals[k]
+                    st.session_state[f"fixed_wf_{sn}"] = old_fixed
+                st.success(f"{fix_choice} fixed for all Sort Nos in this online session.")
+            else:
+                st.info("Yarn Name selected. Yarn price is controlled from RM Price Master / New Price upload.")
         st.rerun()
     if cleared:
         # Clear removes temporary + fixed values only for this Sort No.
@@ -1997,14 +1877,13 @@ def cost_sheet_page():
         st.session_state[f"show_print_cost_sheet_{sort}"] = not st.session_state.get(f"show_print_cost_sheet_{sort}", False)
     if st.session_state.get(f"show_print_cost_sheet_{sort}", False):
         st.markdown(rows_report_html("Cost Sheet Print Preview", sort, full_export_rows), unsafe_allow_html=True)
-    tick_status = dye_tick_from_row(_raw_specs_row_for_sort(sort) or base)
-    shade_name = get_shade_from_row(_raw_specs_row_for_sort(sort) or base)
+    tick_text = get_tick_display(row)
+    tick_kpi = f'<div class="tbl-kpi k5"><b></b>{html.escape(tick_text)}</div>' if tick_text else ''
     cost_header_kpis = (
         f'<div class="tbl-kpi k1"><b>Structure</b>{html.escape(fmt(getv(row,"structure")))}</div>'
         f'<div class="tbl-kpi k2"><b>Finish GSM</b>{html.escape(fmt(getv(row,"finish_gsm")))}</div>'
         f'<div class="tbl-kpi k3"><b>Finish Width</b>{html.escape(fmt(getv(row,"finish_width")))}</div>'
-        f'<div class="tbl-kpi k4"><b>Shade</b>{html.escape(shade_name)}</div>'
-        f'<div class="tbl-kpi k5"><b>Tick</b>{html.escape(tick_status)}</div>'
+        + tick_kpi
     )
     export_header_kpis = (
         f'<div class="tbl-kpi k4"><b>Selling Price</b>{html.escape(fmt(getv(row,"selling_price")))}</div>'
@@ -2025,56 +1904,28 @@ def cost_sheet_page():
 
 def simple_cost_page(kind:str):
     header("Costing")
-    all_sorts=sort_options()
-    shade_list = [""] + shade_options()
-    selected_shade = st.session_state.get(f"{kind}_shade_filter", "")
-    if selected_shade not in shade_list:
-        selected_shade = ""
-    sorts = sort_options_by_shade(selected_shade)
-    if not sorts:
-        sorts = all_sorts
-    selected=st.session_state.get("selected_sort", sorts[0] if sorts else "")
+    shades = shade_options()
+    shade_key = f"shade_filter_{kind}"
+    selected_shade = st.session_state.get(shade_key, "All")
+    if selected_shade not in shades:
+        selected_shade = "All"
+    sorts=sort_options_by_shade(selected_shade); selected=st.session_state.get("selected_sort", sorts[0] if sorts else "")
     st.markdown(f'<div class="sheet-head"><span>{html.escape(kind.upper())}</span></div>', unsafe_allow_html=True)
     if not sorts:
         st.error("No sort data found."); return
-    cshade,c1,c2,c3=st.columns([0.95,2.2,0.8,1.0], gap="small")
-    with cshade:
-        st.selectbox("Shade Name", shade_list, index=shade_list.index(selected_shade), key=f"{kind}_shade_filter")
+    c0,c1,c2,c3=st.columns([1.0,2.2,0.8,1.0], gap="small")
+    with c0:
+        selected_shade=st.selectbox("Shade Name", shades, index=shades.index(selected_shade), key=shade_key)
+        sorts=sort_options_by_shade(selected_shade)
     with c1:
         sort=st.selectbox("Sort No", sorts, index=sorts.index(selected) if selected in sorts else 0, key=f"{kind}_sort")
     r=get_sort_row(sort)
-    raw = _raw_specs_row_for_sort(sort) or r
-    tick_status = dye_tick_from_row(raw)
-    composition = composition_text_from_specs(raw, sort)
+    tick = get_tick_display(r)
+    tick_row = [("", tick)] if tick else []
     if kind=="Cost - Local":
-        rows=[
-            ("Sort No",sort),
-            ("Tick", tick_status),
-            ("Shade Name", get_shade_from_row(raw)),
-            ("Structure",getv(r,'structure')),
-            ("Composition", composition),
-            ("Finish GSM",getv(r,'finish_gsm')),
-            ("Finish Width CMS",getv(r,'finish_width')),
-            ("Finish Width Inch",online_width_inch(r)),
-            ("Sales Price",getv(r,'selling_price')),
-        ]
+        rows=[("Sort No",sort)] + tick_row + [("Structure",getv(r,'structure')),("Finish GSM",getv(r,'finish_gsm')),("Finish Width CMS",getv(r,'finish_width')),("Finish Width Inch",getv(r,'width_inch')),("Composition",composition_summary_text(r, sort)),("Sales Price",getv(r,'selling_price'))]
     else:
-        # Client request: do not show Price in Export Cost.
-        rows=[
-            ("Sort No",sort),
-            ("Tick", tick_status),
-            ("Shade Name", get_shade_from_row(raw)),
-            ("Structure",getv(r,'structure')),
-            ("Finish GSM",getv(r,'finish_gsm')),
-            ("Finish Width CMS",getv(r,'finish_width')),
-            ("Finish Width Inch",online_width_inch(r)),
-            ("Currency Rate",getv(r,'currency_rate')),
-            ("USD/Kg",getv(r,'price_usdkg','total_cost_usd__kg')),
-            ("Price USD Mtrs",getv(r,'price_usdmtrs')),
-            ("Price USD Yds",getv(r,'price_usdyds')),
-            ("Total Cost INR/KG",calc_total_inr_kg(r)),
-            ("Total Cost USD/KG",getv(r,'total_cost_usd__kg')),
-        ]
+        rows=[("Sort No",sort)] + tick_row + [("Structure",getv(r,'structure')),("Finish GSM",getv(r,'finish_gsm')),("Finish Width CMS",getv(r,'finish_width')),("Finish Width Inch",getv(r,'width_inch')),("Currency Rate",getv(r,'currency_rate')),("USD/Kg",getv(r,'price_usdkg','total_cost_usd__kg')),("Price USD Mtrs",getv(r,'price_usdmtrs')),("Price USD Yds",getv(r,'price_usdyds')),("Total Cost INR/KG",calc_total_inr_kg(r)),("Total Cost USD/KG",getv(r,'total_cost_usd__kg'))]
     export_rows = [("REPORT", kind), ("Sort No", sort)] + rows
     with c2:
         print_clicked=st.button("Print Preview", key=f"print_{kind}_{sort}")
@@ -2089,28 +1940,12 @@ def simple_cost_page(kind:str):
 def add_sort_page():
     header("Costing")
     st.markdown('<div class="sheet-head"><span>Add Sort</span></div>', unsafe_allow_html=True)
-
-    st.markdown("<b>Upload New SPECS Sheet</b>", unsafe_allow_html=True)
-    up_specs = st.file_uploader("Upload SPECS Excel/CSV", type=["xlsx","xls","csv"], key="upload_specs_online")
-    spec_dye_choice = st.selectbox("Default Tick Option for Uploaded SPECS", ["", "✓", "✓✓"], help="Blank = No Tick, ✓ = Single Tick, ✓✓ = Double Tick", key="spec_upload_tick")
-    if up_specs is not None and st.button("Upload / Update SPECS Online", type="primary", key="btn_upload_specs_online"):
-        try:
-            df_up = read_uploaded_tabular(up_specs)
-            if spec_dye_choice:
-                df_up["dye_tick"] = spec_dye_choice
-            ok, msg = upload_specs_dataframe_to_supabase(df_up)
-            if ok: st.success("SPECS uploaded/updated online successfully.")
-            else: st.error("SPECS upload failed: " + str(msg))
-        except Exception as e:
-            st.error("SPECS upload error: " + str(e))
-
-    st.markdown("<hr>", unsafe_allow_html=True)
     with st.form("add_sort_form"):
         c1,c2,c3=st.columns(3, gap="small")
         sort=c1.text_input("Sort No")
         structure=c1.text_input("Structure")
-        shade_name=c1.text_input("Shade Name")
-        dye_tick=c1.selectbox("Tick Option", ["", "✓", "✓✓"], help="Blank = No Tick, ✓ = Single Tick, ✓✓ = Double Tick")
+        shade=c1.text_input("Shade Name")
+        dye_tick=c1.selectbox("Tick Option", ["", "✓", "✓✓"], help="Client side will show only tick / double tick / blank, not dyed text.")
         gsm=c2.number_input("Finish GSM", value=0.0, step=1.0, format="%.2f")
         width=c2.number_input("Finish Width", value=0.0, step=1.0, format="%.2f")
         local=c3.number_input("Local Cost", value=0.0, step=1.0, format="%.2f")
@@ -2122,30 +1957,28 @@ def add_sort_page():
                 df=load_group(); c=group_sort_col(df) if not df.empty else 'dev_sorts'
                 new={col:"" for col in df.columns}
                 if c in new: new[c]=sort.strip()
-                for col,val in [('structure',structure),('finish_gsm',gsm),('finish_width',width),('selling_price',sales),('price_per_kg_inr',local),('shade_name',shade_name),('dye_tick',dye_tick)]:
+                for col,val in [('structure',structure),('shade_name',shade),('shade',shade),('dye_tick_status',dye_tick),('finish_gsm',gsm),('finish_width',width),('selling_price',sales),('price_per_kg_inr',local)]:
                     if col in new: new[col]=val
                 df=pd.concat([df,pd.DataFrame([new])], ignore_index=True)
-                # Save to session and try online upsert also.
-                save_group(df)
-                specs_record = {'sync_row_id':'specs_'+clean_sort_value(sort),'sort_no':clean_sort_value(sort),'dev_sorts':clean_sort_value(sort),'structure':structure,'finish_gsm':gsm,'finish_width':width,'shade_name':shade_name,'dye_tick':dye_tick}
-                ok, msg = supabase_post_records("specs", [specs_record], "sync_row_id")
-                st.success("Sort saved." if ok else "Sort saved in session. Online save failed: "+str(msg))
+                save_group(df); st.success("Sort saved in current app session.")
+
+    st.markdown("---")
+    st.markdown("<b>Upload New SPECS Sheet</b>", unsafe_allow_html=True)
+    up_specs = st.file_uploader("Upload SPECS CSV/XLSX", type=["csv","xlsx","xls"], key="upload_specs_online_v5")
+    if up_specs is not None and st.button("Load SPECS Upload", key="load_specs_upload_v5"):
+        try:
+            x = pd.read_csv(up_specs, dtype=str).fillna("") if up_specs.name.lower().endswith(".csv") else pd.read_excel(up_specs, dtype=str).fillna("")
+            x.columns=[norm_col(c) for c in x.columns]
+            st.session_state.group_df = x.copy()
+            _clear_perf_cache_v2()
+            st.success(f"SPECS uploaded in online session: {len(x)} rows. Use offline sync/Supabase final save for permanent update.")
+        except Exception as e:
+            st.error(f"SPECS upload failed: {e}")
 
 def rm_price_page():
     header("Costing")
     st.markdown('<div class="sheet-head"><span>RM Price Master</span></div>', unsafe_allow_html=True)
     df=load_rm()
-
-    st.markdown("<b>Upload New Price Sheet</b>", unsafe_allow_html=True)
-    up_price = st.file_uploader("Upload New Price Excel/CSV", type=["xlsx","xls","csv"], key="upload_new_price_online")
-    if up_price is not None and st.button("Update to RM Price Online", type="primary", key="btn_upload_new_price_online"):
-        try:
-            df_price = read_uploaded_tabular(up_price)
-            ok, msg = upload_new_price_dataframe_to_supabase(df_price)
-            if ok: st.success("New Price updated to RM Price online.")
-            else: st.error("New Price upload failed: " + str(msg))
-        except Exception as e:
-            st.error("New Price upload error: " + str(e))
 
     mode = st.radio("Mode", ["Add New Price", "Edit Existing Price"], horizontal=True, label_visibility="collapsed")
 
@@ -2186,6 +2019,22 @@ def rm_price_page():
                     df.loc[row_index, 'change_date'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                     save_rm(df)
                     st.success("RM Price updated.")
+
+    st.markdown("---")
+    st.markdown("<b>Upload New Price</b>", unsafe_allow_html=True)
+    up_price = st.file_uploader("Upload New Price CSV/XLSX", type=["csv","xlsx","xls"], key="upload_new_price_online_v5")
+    if up_price is not None and st.button("Update to RM Price", key="update_new_price_online_v5"):
+        try:
+            x = pd.read_csv(up_price, dtype=str).fillna("") if up_price.name.lower().endswith(".csv") else pd.read_excel(up_price, dtype=str).fillna("")
+            x = _standardize_rm_df(x, "online_upload")
+            if x.empty:
+                st.warning("No valid price rows found.")
+            else:
+                df2 = pd.concat([load_rm(), x], ignore_index=True)
+                save_rm(df2)
+                st.success(f"New Price uploaded in online session: {len(x)} rows.")
+        except Exception as e:
+            st.error(f"New Price upload failed: {e}")
 
     st.dataframe(load_rm(), use_container_width=True, height=420)
 
